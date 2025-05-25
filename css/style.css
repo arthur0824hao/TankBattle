@@ -1,0 +1,328 @@
+/* 坦克大戰遊戲樣式表 */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    color: white;
+    overflow-x: hidden;
+}
+
+#gameContainer {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+#gameCanvas {
+    border: 3px solid #34495e;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    background: #000;
+}
+
+/* UI 覆蓋層 */
+#uiOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* 計分板 */
+#scoreboard {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px 25px;
+    border-radius: 10px;
+    border: 2px solid #f39c12;
+    font-size: 18px;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.score-item {
+    margin-bottom: 10px;
+}
+
+.score-label {
+    font-weight: bold;
+    color: #f39c12;
+}
+
+#totalScore {
+    font-size: 24px;
+    font-weight: bold;
+    color: #e74c3c;
+    margin-left: 10px;
+}
+
+.score-detail {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    font-size: 14px;
+    color: #ecf0f1;
+}
+
+.score-detail span {
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+}
+
+/* 控制說明 */
+#controls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid #3498db;
+    font-size: 14px;
+    min-width: 200px;
+    pointer-events: auto;
+}
+
+#controls h3 {
+    color: #3498db;
+    margin-bottom: 10px;
+    text-align: center;
+    border-bottom: 1px solid #3498db;
+    padding-bottom: 5px;
+}
+
+.control-item {
+    margin: 5px 0;
+    padding: 2px 0;
+    color: #ecf0f1;
+}
+
+.control-item:hover {
+    color: #f39c12;
+    transition: color 0.3s;
+}
+
+/* 視角指示器 */
+#viewIndicator {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: 2px solid #2ecc71;
+    font-size: 16px;
+    font-weight: bold;
+    color: #2ecc71;
+    pointer-events: auto;
+    transition: all 0.3s ease;
+}
+
+#viewIndicator.third-person {
+    color: #e74c3c;
+    border-color: #e74c3c;
+}
+
+/* 專題介紹 */
+#projectInfo {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 30px;
+    background: rgba(44, 62, 80, 0.9);
+    border-radius: 15px;
+    border: 2px solid #34495e;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+#projectInfo h2 {
+    color: #f39c12;
+    margin-bottom: 20px;
+    text-align: center;
+    font-size: 28px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+#projectInfo p {
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 15px;
+    color: #ecf0f1;
+}
+
+#projectInfo ul {
+    list-style: none;
+    margin: 20px 0;
+}
+
+#projectInfo li {
+    margin: 10px 0;
+    padding: 10px 15px;
+    background: rgba(52, 73, 94, 0.6);
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+#projectInfo li strong {
+    color: #f39c12;
+}
+
+/* 載入動畫 */
+.loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #3498db;
+    border-top: 5px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 遊戲訊息 */
+.game-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    padding: 20px 30px;
+    border-radius: 10px;
+    border: 3px solid #e74c3c;
+    font-size: 24px;
+    font-weight: bold;
+    color: #e74c3c;
+    text-align: center;
+    z-index: 100;
+    animation: fadeInOut 2s ease-in-out;
+}
+
+.message-info { border-color: #3498db; color: #3498db; }
+.message-success { border-color: #2ecc71; color: #2ecc71; }
+.message-warning { border-color: #f39c12; color: #f39c12; }
+.message-error { border-color: #e74c3c; color: #e74c3c; }
+.message-score { border-color: #f39c12; color: #f39c12; animation: pulse 0.5s ease-in-out; }
+
+@keyframes fadeInOut {
+    0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes fadeInOut {
+    0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes floatUp {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) translateY(0px);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) translateY(-80px);
+    }
+}
+
+@keyframes flash {
+    0%, 100% { background: rgba(0, 0, 0, 0.8); }
+    50% { background: rgba(52, 152, 219, 0.3); }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* 響應式設計 */
+@media (max-width: 1024px) {
+    #gameCanvas {
+        width: 90vw;
+        height: 60vh;
+    }
+    
+    #controls {
+        position: relative;
+        margin-top: 20px;
+        right: auto;
+        top: auto;
+    }
+    
+    #gameContainer {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 768px) {
+    #scoreboard {
+        font-size: 16px;
+        padding: 10px 15px;
+    }
+    
+    #totalScore {
+        font-size: 20px;
+    }
+    
+    .score-detail {
+        font-size: 12px;
+        gap: 10px;
+    }
+    
+    #projectInfo {
+        margin: 20px;
+        padding: 20px;
+    }
+    
+    #projectInfo h2 {
+        font-size: 24px;
+    }
+    
+    #projectInfo p, #projectInfo li {
+        font-size: 14px;
+    }
+}

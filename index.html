@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>坦克大戰 - 計算機圖學期末專題</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
+        
+        <!-- UI 覆蓋層 -->
+        <div id="uiOverlay">
+            <!-- 計分板 -->
+            <div id="scoreboard">
+                <div class="score-item">
+                    <span class="score-label">得分:</span>
+                    <span id="totalScore">0</span>
+                </div>
+                <div class="score-detail">
+                    <span>白球: <span id="whiteScore">0</span></span>
+                    <span>藍球: <span id="blueScore">0</span></span>
+                    <span>紅球: <span id="redScore">0</span></span>
+                </div>
+            </div>
+            
+            <!-- 控制說明 -->
+            <div id="controls">
+                <div class="control-section">
+                    <h3>控制說明</h3>
+                    <div class="control-item">WASD: 移動坦克</div>
+                    <div class="control-item">↑↓: 調節砲管仰角</div>
+                    <div class="control-item">空白鍵: 發射砲彈</div>
+                    <div class="control-item">P: 切換視角</div>
+                    <div class="control-item">QE: 第三人稱視角旋轉</div>
+                    <div class="control-item">R: 重新開始</div>
+                </div>
+            </div>
+            
+            <!-- 視角指示器 -->
+            <div id="viewIndicator">第一人稱</div>
+        </div>
+    </div>
+    
+    <!-- 專題介紹 -->
+    <div id="projectInfo">
+        <h2>坦克大戰 - WebGL 3D遊戲</h2>
+        <p>這是一個使用純WebGL實現的3D坦克射擊遊戲，展示了現代計算機圖學技術：</p>
+        <ul>
+            <li><strong>Phong光照模型</strong>：實現環境光、漫反射和鏡面反射的完整光照效果</li>
+            <li><strong>紋理映射</strong>：為3D物體添加真實感紋理</li>
+            <li><strong>環境Cube Map</strong>：360度天空盒背景</li>
+            <li><strong>動態反射</strong>：實時反射效果增強視覺真實感</li>
+            <li><strong>陰影映射</strong>：使用Frame Buffer Objects實現即時陰影</li>
+            <li><strong>雙視角系統</strong>：支援第一人稱和第三人稱視角切換</li>
+        </ul>
+        <p>目標：射擊不同顏色的球體獲得分數 - 白球(1分)、藍球(5分)、紅球(10分)</p>
+    </div>
+
+    <!-- WebGL 著色器 -->
+    <script id="phong-vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 aPosition;
+        attribute vec3 aNormal;
+        attribute vec2 aTexCoord;
+        
+        uniform mat4 uModelMatrix;
+        uniform mat4 uViewMatrix;
+        uniform mat4 uProjectionMatrix;
+        uniform mat4 uNormalMatrix;
+        uniform mat4 uLightSpaceMatrix;
+        
+        varying vec3 vWorldPosition;
+        varying vec3 vNormal;
+        varying vec2 vTexCoord;
+        varying vec4 vLightSpacePos;
+        
+        void main() {
+            vec4 worldPosition = uModelMatrix * vec4(aPosition, 1.0);
+            vWorldPosition = worldPosition.xyz;
+            vNormal = normalize((uNormalMatrix * vec4(aNormal, 0.0)).xyz);
+            vTexCoord = aTexCoord;
+            vLightSpacePos = uLightSpaceMatrix * worldPosition;
+            
+            gl_Position = uProjectionMatrix * uViewMatrix * worldPosition;
+        }
+    </script>
+    
+    <script id="phong-fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+        
+        varying vec3 vWorldPosition;
+        varying vec3 vNormal;
+        varying vec2 vTexCoord;
+        varying vec4 vLightSpacePos;
+        
+        uniform vec3 uLightPosition;
+        uniform vec3 uLightColor;
+        uniform vec3 uCameraPosition;
+        
+        uniform vec3 uAmbientColor;
+        uniform vec3 uDiffuseColor;
+        uniform vec3 uSpecularColor;
+        uniform float uShininess;
+        
+        uniform sampler2D uTexture;
+        uniform sampler2D uShadowMap;
+        uniform bool uUseTexture;
+        
+        float calculateShadow(vec4 lightSpacePos) {
+            vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+            projCoords = projCoords * 0.5 + 0.5;
+            
+            if (projCoords.z > 1.0) return 0.0;
+            
+            float closestDepth = texture2D(uShadowMap, projCoords.xy).r;
+            float currentDepth = projCoords.z;
+            
+            float bias = 0.005;
+            return currentDepth - bias > closestDepth ? 1.0 : 0.0;
+        }
+        
+        void main() {
+            vec3 normal = normalize(vNormal);
+            vec3 lightDir = normalize(uLightPosition - vWorldPosition);
+            vec3 viewDir = normalize(uCameraPosition - vWorldPosition);
+            vec3 reflectDir = reflect(-lightDir, normal);
+            
+            // Ambient
+            vec3 ambient = uAmbientColor;
+            
+            // Diffuse
+            float diff = max(dot(normal, lightDir), 0.0);
+            vec3 diffuse = diff * uLightColor * uDiffuseColor;
+            
+            // Specular
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), uShininess);
+            vec3 specular = spec * uLightColor * uSpecularColor;
+            
+            // Shadow
+            float shadow = calculateShadow(vLightSpacePos);
+            vec3 lighting = ambient + (1.0 - shadow) * (diffuse + specular);
+            
+            // Texture
+            vec3 color = lighting;
+            if (uUseTexture) {
+                vec3 texColor = texture2D(uTexture, vTexCoord).rgb;
+                color *= texColor;
+            }
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <!-- JavaScript 模組 -->
+    <script src="js/utils/SystemCheck.js"></script>
+    <script src="js/utils/Utils.js"></script>
+    <script src="js/webgl/MatrixLib.js"></script>
+    <script src="js/webgl/WebGLCore.js"></script>
+    <script src="js/webgl/ShaderManager.js"></script>
+    <script src="js/webgl/TextureManager.js"></script>
+    <script src="js/webgl/FrameBuffer.js"></script>
+    <script src="js/engine/Camera.js"></script>
+    <script src="js/engine/InputHandler.js"></script>
+    <script src="js/engine/Physics.js"></script>
+    <script src="js/engine/Lighting.js"></script>
+    <script src="js/engine/ShadowRenderer.js"></script>
+    <script src="js/game/Tank.js"></script>
+    <script src="js/game/Bullet.js"></script>
+    <script src="js/game/Target.js"></script>
+    <script src="js/game/Scene.js"></script>
+    <script src="js/game/GameManager.js"></script>
+    <script src="js/ui/UI.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
