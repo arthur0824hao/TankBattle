@@ -1,40 +1,39 @@
 /**
  * 砲彈類別
- * 管理砲彈的物理、碰撞檢測和渲染
+ * 處理砲彈的移動、碰撞檢測和生命週期
  */
 class Bullet {
-    constructor(webglCore, shaderManager, position, direction) {
+    constructor(webglCore, shaderManager, startPosition, direction, speed = 100) {
         this.webglCore = webglCore;
         this.gl = webglCore.getContext();
         this.shaderManager = shaderManager;
         
-        // 物理屬性
-        this.position = [...position];
-        this.velocity = MatrixLib.multiply3(direction, 30); // 30 單位/秒
-        this.gravity = [0, -9.8, 0]; // 重力加速度
-        
-        // 生命週期
-        this.lifetime = 10.0; // 最多飛行10秒
-        this.age = 0;
+        // 砲彈屬性
+        this.position = [...startPosition];
+        this.direction = [...direction];
+        this.speed = speed;
+        this.radius = 0.5;
         this.active = true;
         
-        // 碰撞屬性
-        this.radius = 0.5;
-        this.boundarySize = 800;
+        // 生命週期
+        this.maxLifeTime = 10.0; // 最大飛行時間（秒）
+        this.lifeTime = 0;
         
-        // 軌跡記錄
-        this.trail = [];
-        this.maxTrailLength = 20;
+        // 場景邊界
+        this.worldBounds = {
+            min: [-800, 0, -800],
+            max: [800, 800, 800]
+        };
         
         // 幾何體
         this.geometry = null;
         this.modelMatrix = MatrixLib.identity();
         
-        // 材質屬性
+        // 材質屬性 - 修正為金黃色砲彈
         this.material = {
-            ambient: [0.1, 0.1, 0.1],
-            diffuse: [0.8, 0.3, 0.1],
-            specular: [1.0, 1.0, 1.0],
+            ambient: [0.2, 0.15, 0.05],   // 暗金色環境光
+            diffuse: [0.8, 0.6, 0.2],     // 金黃色
+            specular: [1.0, 0.9, 0.7],    // 金色高光
             shininess: 64.0
         };
         
@@ -42,49 +41,48 @@ class Bullet {
         this.updateMatrix();
     }
     
-    // 創建球體幾何體
+    // 創建球形幾何體
     createGeometry() {
         const radius = this.radius;
-        const latSegments = 8;
-        const lonSegments = 12;
+        const segments = 16;
+        const rings = 12;
         
         const vertices = [];
         const indices = [];
         
-        // 頂點
-        for (let lat = 0; lat <= latSegments; lat++) {
-            const theta = lat * Math.PI / latSegments;
-            const sinTheta = Math.sin(theta);
-            const cosTheta = Math.cos(theta);
+        // 生成球體頂點
+        for (let ring = 0; ring <= rings; ring++) {
+            const phi = (ring / rings) * Math.PI;
+            const y = Math.cos(phi) * radius;
+            const ringRadius = Math.sin(phi) * radius;
             
-            for (let lon = 0; lon <= lonSegments; lon++) {
-                const phi = lon * 2 * Math.PI / lonSegments;
-                const sinPhi = Math.sin(phi);
-                const cosPhi = Math.cos(phi);
+            for (let segment = 0; segment <= segments; segment++) {
+                const theta = (segment / segments) * Math.PI * 2;
+                const x = Math.cos(theta) * ringRadius;
+                const z = Math.sin(theta) * ringRadius;
                 
-                const x = cosPhi * sinTheta;
-                const y = cosTheta;
-                const z = sinPhi * sinTheta;
+                // 位置
+                vertices.push(x, y, z);
                 
-                const u = 1 - (lon / lonSegments);
-                const v = 1 - (lat / latSegments);
+                // 法向量（正規化的位置向量）
+                const length = Math.sqrt(x * x + y * y + z * z);
+                vertices.push(x / length, y / length, z / length);
                 
-                vertices.push(
-                    radius * x, radius * y, radius * z,  // 位置
-                    x, y, z,                              // 法向量
-                    u, v                                  // 紋理座標
-                );
+                // 紋理座標
+                vertices.push(segment / segments, ring / rings);
             }
         }
         
-        // 索引
-        for (let lat = 0; lat < latSegments; lat++) {
-            for (let lon = 0; lon < lonSegments; lon++) {
-                const first = (lat * (lonSegments + 1)) + lon;
-                const second = first + lonSegments + 1;
+        // 生成索引
+        for (let ring = 0; ring < rings; ring++) {
+            for (let segment = 0; segment < segments; segment++) {
+                const curr = ring * (segments + 1) + segment;
+                const next = curr + segments + 1;
                 
-                indices.push(first, second, first + 1);
-                indices.push(second, second + 1, first + 1);
+                // 第一個三角形
+                indices.push(curr, next, curr + 1);
+                // 第二個三角形
+                indices.push(curr + 1, next, next + 1);
             }
         }
         
@@ -97,66 +95,81 @@ class Bullet {
         };
     }
     
-    // 更新砲彈狀態
+    // 更新砲彈
     update(deltaTime) {
-        if (!this.active) return false;
+        if (!this.active) return;
         
-        // 記錄軌跡
-        this.trail.push([...this.position]);
-        if (this.trail.length > this.maxTrailLength) {
-            this.trail.shift();
-        }
-        
-        // 更新物理
-        this.velocity[0] += this.gravity[0] * deltaTime;
-        this.velocity[1] += this.gravity[1] * deltaTime;
-        this.velocity[2] += this.gravity[2] * deltaTime;
-        
-        this.position[0] += this.velocity[0] * deltaTime;
-        this.position[1] += this.velocity[1] * deltaTime;
-        this.position[2] += this.velocity[2] * deltaTime;
-        
-        // 更新年齡
-        this.age += deltaTime;
-        
-        // 檢查生命週期
-        if (this.age >= this.lifetime) {
+        // 更新生命週期
+        this.lifeTime += deltaTime;
+        if (this.lifeTime >= this.maxLifeTime) {
             this.active = false;
-            return false;
+            return;
         }
         
-        // 檢查邊界碰撞
-        if (this.checkBoundaryCollision()) {
+        // 直線等速運動
+        const distance = this.speed * deltaTime;
+        this.position[0] += this.direction[0] * distance;
+        this.position[1] += this.direction[1] * distance;
+        this.position[2] += this.direction[2] * distance;
+        
+        // 檢查世界邊界碰撞
+        if (this.checkWorldBounds()) {
             this.active = false;
-            return false;
+            return;
         }
         
-        // 檢查地面碰撞
-        if (this.position[1] <= 0) {
-            this.active = false;
-            return false;
-        }
-        
+        // 更新變換矩陣
         this.updateMatrix();
-        return true;
     }
     
-    // 檢查邊界碰撞
-    checkBoundaryCollision() {
-        return Math.abs(this.position[0]) > this.boundarySize ||
-               Math.abs(this.position[2]) > this.boundarySize ||
-               this.position[1] > this.boundarySize;
+    // 檢查世界邊界碰撞
+    checkWorldBounds() {
+        return (
+            this.position[0] < this.worldBounds.min[0] || this.position[0] > this.worldBounds.max[0] ||
+            this.position[1] < this.worldBounds.min[1] || this.position[1] > this.worldBounds.max[1] ||
+            this.position[2] < this.worldBounds.min[2] || this.position[2] > this.worldBounds.max[2]
+        );
     }
     
     // 檢查與球體的碰撞
-    checkSphereCollision(spherePos, sphereRadius) {
-        if (!this.active) return false;
+    checkSphereCollision(otherPosition, otherRadius) {
+        const dx = this.position[0] - otherPosition[0];
+        const dy = this.position[1] - otherPosition[1];
+        const dz = this.position[2] - otherPosition[2];
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         
-        const distance = MatrixLib.distance(this.position, spherePos);
-        return distance <= (this.radius + sphereRadius);
+        return distance < (this.radius + otherRadius);
     }
     
-    // 更新模型矩陣
+    // 檢查與盒子的碰撞
+    checkBoxCollision(boxPosition, boxDimensions) {
+        // 簡化的AABB碰撞檢測
+        const halfDims = [
+            boxDimensions[0] / 2,
+            boxDimensions[1] / 2,
+            boxDimensions[2] / 2
+        ];
+        
+        // 找到盒子上最近的點
+        const closest = [
+            Math.max(boxPosition[0] - halfDims[0], 
+                    Math.min(this.position[0], boxPosition[0] + halfDims[0])),
+            Math.max(boxPosition[1] - halfDims[1], 
+                    Math.min(this.position[1], boxPosition[1] + halfDims[1])),
+            Math.max(boxPosition[2] - halfDims[2], 
+                    Math.min(this.position[2], boxPosition[2] + halfDims[2]))
+        ];
+        
+        // 計算距離
+        const dx = this.position[0] - closest[0];
+        const dy = this.position[1] - closest[1];
+        const dz = this.position[2] - closest[2];
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+        return distance < this.radius;
+    }
+    
+    // 更新變換矩陣
     updateMatrix() {
         this.modelMatrix = MatrixLib.translate(
             this.position[0], 
@@ -167,23 +180,29 @@ class Bullet {
     
     // 渲染砲彈
     render(camera, lighting) {
-        if (!this.active) return;
+        if (!this.active || !this.geometry) return;
         
         const program = this.shaderManager.useProgram('phong');
         if (!program) return;
         
-        // 設定 uniform
+        // 設定變換矩陣
         this.webglCore.setUniform(program, 'uModelMatrix', this.modelMatrix, 'mat4');
         this.webglCore.setUniform(program, 'uViewMatrix', camera.getViewMatrix(), 'mat4');
         this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
         this.webglCore.setUniform(program, 'uNormalMatrix', MatrixLib.normalMatrix(this.modelMatrix), 'mat3');
         this.webglCore.setUniform(program, 'uCameraPosition', camera.getPosition(), 'vec3');
         
-        // 設定光照
-        this.webglCore.setUniform(program, 'uLightPosition', lighting.position, 'vec3');
-        this.webglCore.setUniform(program, 'uLightColor', lighting.color, 'vec3');
+        // 應用光照系統
+        if (lighting.applyToShader) {
+            lighting.applyToShader(this.webglCore, program, camera.getPosition());
+        } else {
+            // 後備光照設定
+            this.webglCore.setUniform(program, 'uLightPosition', lighting.position || [0, 100, 0], 'vec3');
+            this.webglCore.setUniform(program, 'uLightColor', lighting.color || [1.0, 1.0, 1.0], 'vec3');
+            this.webglCore.setUniform(program, 'uLightAttenuation', [1.0, 0.001, 0.000001], 'vec3');
+        }
         
-        // 設定材質
+        // 材質設定
         this.webglCore.setUniform(program, 'uAmbientColor', this.material.ambient, 'vec3');
         this.webglCore.setUniform(program, 'uDiffuseColor', this.material.diffuse, 'vec3');
         this.webglCore.setUniform(program, 'uSpecularColor', this.material.specular, 'vec3');
@@ -191,62 +210,26 @@ class Bullet {
         this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         // 綁定頂點屬性
-        this.webglCore.bindVertexAttribute(program, 'aPosition', this.geometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 0);
-        this.webglCore.bindVertexAttribute(program, 'aNormal', this.geometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 3 * 4);
-        this.webglCore.bindVertexAttribute(program, 'aTexCoord', this.geometry.vertexBuffer, 2, this.gl.FLOAT, false, 8 * 4, 6 * 4);
+        const positionBound = this.webglCore.bindVertexAttribute(
+            program, 'aPosition', this.geometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 0
+        );
+        const normalBound = this.webglCore.bindVertexAttribute(
+            program, 'aNormal', this.geometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 3 * 4
+        );
+        const texCoordBound = this.webglCore.bindVertexAttribute(
+            program, 'aTexCoord', this.geometry.vertexBuffer, 2, this.gl.FLOAT, false, 8 * 4, 6 * 4
+        );
         
         // 繪製
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.geometry.indexBuffer);
-        this.webglCore.drawElements(this.gl.TRIANGLES, this.geometry.indexCount);
+        if (positionBound) {
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.geometry.indexBuffer);
+            this.webglCore.drawElements(this.gl.TRIANGLES, this.geometry.indexCount);
+        }
     }
     
-    // 渲染軌跡
-    renderTrail(camera) {
-        if (!this.active || this.trail.length < 2) return;
-        
-        const program = this.shaderManager.useProgram('particle');
-        if (!program) return;
-        
-        // 設定 uniform
-        this.webglCore.setUniform(program, 'uViewMatrix', camera.getViewMatrix(), 'mat4');
-        this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
-        
-        // 準備軌跡點資料
-        const trailData = [];
-        for (let i = 0; i < this.trail.length; i++) {
-            const point = this.trail[i];
-            const alpha = i / this.trail.length;
-            const size = 2.0 * alpha;
-            
-            trailData.push(
-                point[0], point[1], point[2],  // 位置
-                size,                          // 大小
-                1.0, 0.5 * alpha, 0.0         // 顏色（橙色漸變）
-            );
-        }
-        
-        if (trailData.length === 0) return;
-        
-        // 創建軌跡緩衝區
-        const trailBuffer = this.webglCore.createVertexBuffer(trailData);
-        
-        // 綁定屬性
-        this.webglCore.bindVertexAttribute(program, 'aPosition', trailBuffer, 3, this.gl.FLOAT, false, 7 * 4, 0);
-        this.webglCore.bindVertexAttribute(program, 'aSize', trailBuffer, 1, this.gl.FLOAT, false, 7 * 4, 3 * 4);
-        this.webglCore.bindVertexAttribute(program, 'aColor', trailBuffer, 3, this.gl.FLOAT, false, 7 * 4, 4 * 4);
-        
-        // 啟用混合
-        this.gl.enable(this.gl.BLEND);
-        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-        
-        // 繪製點
-        this.webglCore.drawArrays(this.gl.POINTS, 0, this.trail.length);
-        
-        // 恢復狀態
-        this.gl.disable(this.gl.BLEND);
-        
-        // 清理緩衝區
-        this.gl.deleteBuffer(trailBuffer);
+    // 銷毀砲彈
+    destroy() {
+        this.active = false;
     }
     
     // 獲取位置
@@ -264,91 +247,135 @@ class Bullet {
         return this.active;
     }
     
-    // 銷毀砲彈
-    destroy() {
-        this.active = false;
-        this.trail = [];
+    // 獲取模型矩陣（用於陰影渲染）
+    getModelMatrix() {
+        return this.modelMatrix;
     }
     
-    // 獲取剩餘生命時間
-    getRemainingLifetime() {
-        return Math.max(0, this.lifetime - this.age);
+    // 設定世界邊界
+    setWorldBounds(min, max) {
+        this.worldBounds.min = [...min];
+        this.worldBounds.max = [...max];
     }
     
-    // 獲取速度
-    getVelocity() {
-        return [...this.velocity];
+    // 射線投射檢測（簡化版）
+    static raycast(origin, direction, targets, maxDistance = Infinity) {
+        const hits = [];
+        
+        targets.forEach(target => {
+            const hit = Bullet.rayIntersectSphere(
+                origin, 
+                direction, 
+                target.getPosition(), 
+                target.getRadius()
+            );
+            
+            if (hit && hit.distance <= maxDistance) {
+                hits.push({
+                    target: target,
+                    point: hit.point,
+                    distance: hit.distance,
+                    normal: hit.normal
+                });
+            }
+        });
+        
+        // 按距離排序
+        hits.sort((a, b) => a.distance - b.distance);
+        return hits;
     }
     
-    // 獲取軌跡長度
-    getTrailLength() {
-        return this.trail.length;
+    // 射線與球體相交檢測
+    static rayIntersectSphere(rayOrigin, rayDirection, sphereCenter, sphereRadius) {
+        const oc = [
+            rayOrigin[0] - sphereCenter[0],
+            rayOrigin[1] - sphereCenter[1],
+            rayOrigin[2] - sphereCenter[2]
+        ];
+        
+        const a = rayDirection[0] * rayDirection[0] + 
+                  rayDirection[1] * rayDirection[1] + 
+                  rayDirection[2] * rayDirection[2];
+        const b = 2.0 * (oc[0] * rayDirection[0] + 
+                        oc[1] * rayDirection[1] + 
+                        oc[2] * rayDirection[2]);
+        const c = oc[0] * oc[0] + oc[1] * oc[1] + oc[2] * oc[2] - 
+                  sphereRadius * sphereRadius;
+        
+        const discriminant = b * b - 4 * a * c;
+        
+        if (discriminant < 0) return null;
+        
+        const t = (-b - Math.sqrt(discriminant)) / (2 * a);
+        if (t < 0) return null;
+        
+        const point = [
+            rayOrigin[0] + t * rayDirection[0],
+            rayOrigin[1] + t * rayDirection[1],
+            rayOrigin[2] + t * rayDirection[2]
+        ];
+        
+        const normal = [
+            (point[0] - sphereCenter[0]) / sphereRadius,
+            (point[1] - sphereCenter[1]) / sphereRadius,
+            (point[2] - sphereCenter[2]) / sphereRadius
+        ];
+        
+        return {
+            point: point,
+            normal: normal,
+            distance: t
+        };
     }
 }
 
 /**
  * 砲彈管理器
- * 管理多個砲彈的生命週期
+ * 管理多個砲彈的生命週期和渲染
  */
 class BulletManager {
     constructor(webglCore, shaderManager) {
         this.webglCore = webglCore;
         this.shaderManager = shaderManager;
+        
         this.bullets = [];
         this.maxBullets = 5; // 最多同時存在5顆砲彈
     }
     
     // 發射砲彈
-    fire(position, direction) {
-        // 移除超過限制的舊砲彈
-        while (this.bullets.length >= this.maxBullets) {
+    fire(position, direction, speed = 100) {
+        // 如果已達到最大數量，移除最舊的砲彈
+        if (this.bullets.length >= this.maxBullets) {
             this.bullets.shift();
         }
         
-        const bullet = new Bullet(this.webglCore, this.shaderManager, position, direction);
+        const bullet = new Bullet(this.webglCore, this.shaderManager, position, direction, speed);
         this.bullets.push(bullet);
         
-        console.log(`Bullet fired from [${position.map(v => v.toFixed(1)).join(', ')}]`);
-        return bullet;
+        console.log(`Bullet fired from [${position.join(', ')}] in direction [${direction.join(', ')}]`);
     }
     
     // 更新所有砲彈
     update(deltaTime) {
-        this.bullets = this.bullets.filter(bullet => bullet.update(deltaTime));
+        // 更新砲彈
+        this.bullets.forEach(bullet => {
+            bullet.update(deltaTime);
+        });
+        
+        // 移除非活躍的砲彈
+        this.bullets = this.bullets.filter(bullet => bullet.isActive());
     }
     
     // 渲染所有砲彈
     render(camera, lighting) {
         this.bullets.forEach(bullet => {
             bullet.render(camera, lighting);
-            bullet.renderTrail(camera);
         });
     }
     
-    // 檢查與目標的碰撞
-    checkCollisions(targets) {
-        const hits = [];
-        
-        this.bullets.forEach((bullet, bulletIndex) => {
-            if (!bullet.isActive()) return;
-            
-            targets.forEach((target, targetIndex) => {
-                if (!target.isActive()) return;
-                
-                if (bullet.checkSphereCollision(target.getPosition(), target.getRadius())) {
-                    hits.push({
-                        bullet: bullet,
-                        bulletIndex: bulletIndex,
-                        target: target,
-                        targetIndex: targetIndex
-                    });
-                    
-                    bullet.destroy();
-                }
-            });
-        });
-        
-        return hits;
+    // 獲取所有活躍砲彈
+    getBullets() {
+        return this.bullets.filter(bullet => bullet.isActive());
     }
     
     // 獲取活躍砲彈數量
@@ -358,11 +385,46 @@ class BulletManager {
     
     // 清除所有砲彈
     clear() {
-        this.bullets = [];
+        this.bullets.length = 0;
     }
     
-    // 獲取所有砲彈
-    getBullets() {
-        return this.bullets;
+    // 檢查砲彈與目標的碰撞
+    checkCollisions(targets) {
+        const hits = [];
+        
+        this.bullets.forEach(bullet => {
+            if (!bullet.isActive()) return;
+            
+            targets.forEach(target => {
+                if (!target.isActive()) return;
+                
+                if (bullet.checkSphereCollision(target.getPosition(), target.getRadius())) {
+                    hits.push({
+                        bullet: bullet,
+                        target: target,
+                        position: bullet.getPosition()
+                    });
+                    
+                    // 銷毀砲彈
+                    bullet.destroy();
+                }
+            });
+        });
+        
+        return hits;
+    }
+    
+    // 設定最大砲彈數量
+    setMaxBullets(count) {
+        this.maxBullets = Math.max(1, count);
+    }
+    
+    // 獲取統計資訊
+    getStats() {
+        return {
+            totalBullets: this.bullets.length,
+            activeBullets: this.getActiveBulletCount(),
+            maxBullets: this.maxBullets
+        };
     }
 }

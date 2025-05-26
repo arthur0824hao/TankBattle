@@ -1,50 +1,36 @@
 /**
  * 光照系統
- * 管理點光源和 Phong 光照模型
+ * 管理場景中央頂部的點光源和完整Phong光照
  */
 class Lighting {
     constructor() {
-        // 主光源（點光源）
+        // 主點光源 - 位於場景中央頂部
         this.mainLight = {
-            position: [0, 400, 0],      // 場景中央上方
-            color: [1.0, 1.0, 0.9],     // 暖白光
-            intensity: 1.0,
+            position: [0, 400, 0],          // 調低高度到400
+            color: [1.0, 1.0, 0.95],        // 暖白光
+            intensity: 2.0,                 // 增加強度
             attenuation: {
                 constant: 1.0,
-                linear: 0.0014,         // 適合800單位場景的衰減
-                quadratic: 0.000007
+                linear: 0.0005,             // 減少線性衰減
+                quadratic: 0.000001         // 減少二次衰減
             }
         };
         
-        // 環境光
+        // 全域環境光
         this.ambientLight = {
-            color: [0.2, 0.2, 0.25],    // 微藍色環境光
-            intensity: 0.3
+            color: [0.2, 0.2, 0.25],        // 稍微增加環境光
+            intensity: 0.3                  // 增加環境光強度
         };
         
-        // 光照動畫
+        // 光照動畫（可選）
         this.animation = {
             enabled: false,
             time: 0,
-            amplitude: 0.2,
-            frequency: 0.5
+            flickerAmplitude: 0.1,
+            flickerFrequency: 2.0
         };
         
-        // 陰影參數
-        this.shadowSettings = {
-            enabled: true,
-            mapSize: 2048,              // 陰影貼圖大小
-            bias: 0.005,                // 陰影偏移
-            shadowDistance: 1000,       // 陰影距離
-            lightViewSize: 1000         // 光源視圖大小
-        };
-        
-        // 光照矩陣
-        this.lightViewMatrix = MatrixLib.identity();
-        this.lightProjectionMatrix = MatrixLib.identity();
-        this.lightSpaceMatrix = MatrixLib.identity();
-        
-        this.updateLightMatrices();
+        console.log('Point light initialized at scene center top:', this.mainLight.position);
     }
     
     // 更新光照系統
@@ -53,96 +39,67 @@ class Lighting {
             this.animation.time += deltaTime;
             this.updateLightAnimation();
         }
-        
-        this.updateLightMatrices();
     }
     
-    // 更新光照動畫
+    // 更新光照動畫效果
     updateLightAnimation() {
-        const baseIntensity = 1.0;
-        const variation = Math.sin(this.animation.time * this.animation.frequency) * this.animation.amplitude;
-        this.mainLight.intensity = Math.max(0.1, baseIntensity + variation);
+        // 光源強度閃爍效果
+        const baseIntensity = 1.2;
+        const flicker = Math.sin(this.animation.time * this.animation.flickerFrequency) * this.animation.flickerAmplitude;
+        this.mainLight.intensity = Math.max(0.3, baseIntensity + flicker);
         
-        // 光源位置的微小搖擺
-        const baseY = 400;
-        const sway = Math.sin(this.animation.time * 0.3) * 10;
-        this.mainLight.position[1] = baseY + sway;
+        // 可選：輕微的位置搖擺
+        const basePosY = 600;
+        const sway = Math.sin(this.animation.time * 0.5) * 5;
+        this.mainLight.position[1] = basePosY + sway;
     }
     
-    // 更新光照矩陣（用於陰影）
-    updateLightMatrices() {
-        const lightPos = this.mainLight.position;
-        const lightTarget = [0, 0, 0]; // 看向場景中心
-        const lightUp = [0, 0, 1];     // 光源的上方向
+    // 應用光照參數到著色器
+    applyToShader(webglCore, program, cameraPosition) {
+        // 點光源位置
+        webglCore.setUniform(program, 'uLightPosition', this.mainLight.position, 'vec3');
         
-        // 光源視圖矩陣
-        this.lightViewMatrix = MatrixLib.lookAt(lightPos, lightTarget, lightUp);
-        
-        // 光源投影矩陣（正交投影用於方向光陰影）
-        const size = this.shadowSettings.lightViewSize;
-        this.lightProjectionMatrix = MatrixLib.orthographic(
-            -size, size, -size, size, 1, this.shadowSettings.shadowDistance
-        );
-        
-        // 光空間矩陣
-        this.lightSpaceMatrix = MatrixLib.multiply(
-            this.lightProjectionMatrix, 
-            this.lightViewMatrix
-        );
-    }
-    
-    // 應用光照到著色器
-    applyToShader(shaderManager, program, cameraPosition) {
-        const gl = shaderManager.gl;
-        
-        // 主光源參數
-        shaderManager.setUniform(program, 'uLightPosition', this.mainLight.position, 'vec3');
-        
+        // 點光源顏色（考慮強度）
         const lightColor = [
             this.mainLight.color[0] * this.mainLight.intensity,
             this.mainLight.color[1] * this.mainLight.intensity,
             this.mainLight.color[2] * this.mainLight.intensity
         ];
-        shaderManager.setUniform(program, 'uLightColor', lightColor, 'vec3');
+        webglCore.setUniform(program, 'uLightColor', lightColor, 'vec3');
         
-        // 環境光
+        // 攝影機位置（用於鏡面反射計算）
+        webglCore.setUniform(program, 'uCameraPosition', cameraPosition, 'vec3');
+        
+        // 光衰減參數
+        const attenuation = [
+            this.mainLight.attenuation.constant,
+            this.mainLight.attenuation.linear,
+            this.mainLight.attenuation.quadratic
+        ];
+        webglCore.setUniform(program, 'uLightAttenuation', attenuation, 'vec3');
+        
+        // 環境光顏色（考慮強度）
         const ambientColor = [
             this.ambientLight.color[0] * this.ambientLight.intensity,
             this.ambientLight.color[1] * this.ambientLight.intensity,
             this.ambientLight.color[2] * this.ambientLight.intensity
         ];
-        shaderManager.setUniform(program, 'uAmbientColor', ambientColor, 'vec3');
-        
-        // 攝影機位置
-        shaderManager.setUniform(program, 'uCameraPosition', cameraPosition, 'vec3');
-        
-        // 光衰減參數
-        shaderManager.setUniform(program, 'uLightAttenuation', [
-            this.mainLight.attenuation.constant,
-            this.mainLight.attenuation.linear,
-            this.mainLight.attenuation.quadratic
-        ], 'vec3');
-        
-        // 陰影相關參數
-        if (this.shadowSettings.enabled) {
-            shaderManager.setUniform(program, 'uLightSpaceMatrix', this.lightSpaceMatrix, 'mat4');
-            shaderManager.setUniform(program, 'uShadowBias', this.shadowSettings.bias, 'float');
-        }
+        webglCore.setUniform(program, 'uAmbientColor', ambientColor, 'vec3');
     }
     
-    // 設定主光源位置
-    setMainLightPosition(x, y, z) {
+    // 設定光源位置
+    setLightPosition(x, y, z) {
         this.mainLight.position = [x, y, z];
-        this.updateLightMatrices();
+        console.log('Light position updated to:', this.mainLight.position);
     }
     
-    // 設定主光源顏色
-    setMainLightColor(r, g, b) {
+    // 設定光源顏色
+    setLightColor(r, g, b) {
         this.mainLight.color = [r, g, b];
     }
     
-    // 設定主光源強度
-    setMainLightIntensity(intensity) {
+    // 設定光源強度
+    setLightIntensity(intensity) {
         this.mainLight.intensity = Math.max(0, intensity);
     }
     
@@ -152,49 +109,29 @@ class Lighting {
         this.ambientLight.intensity = Math.max(0, intensity);
     }
     
+    // 設定光衰減參數
+    setAttenuation(constant, linear, quadratic) {
+        this.mainLight.attenuation = {
+            constant: constant,
+            linear: linear,
+            quadratic: quadratic
+        };
+    }
+    
     // 啟用/禁用光照動畫
     setAnimationEnabled(enabled) {
         this.animation.enabled = enabled;
         if (!enabled) {
-            this.mainLight.intensity = 1.0;
-            this.mainLight.position[1] = 400;
+            // 重置到預設值
+            this.mainLight.intensity = 1.2;
+            this.mainLight.position[1] = 600;
         }
     }
     
     // 設定動畫參數
     setAnimationParams(amplitude, frequency) {
-        this.animation.amplitude = amplitude;
-        this.animation.frequency = frequency;
-    }
-    
-    // 啟用/禁用陰影
-    setShadowEnabled(enabled) {
-        this.shadowSettings.enabled = enabled;
-    }
-    
-    // 設定陰影貼圖大小
-    setShadowMapSize(size) {
-        this.shadowSettings.mapSize = size;
-    }
-    
-    // 設定陰影偏移
-    setShadowBias(bias) {
-        this.shadowSettings.bias = bias;
-    }
-    
-    // 獲取光源視圖矩陣
-    getLightViewMatrix() {
-        return this.lightViewMatrix;
-    }
-    
-    // 獲取光源投影矩陣
-    getLightProjectionMatrix() {
-        return this.lightProjectionMatrix;
-    }
-    
-    // 獲取光空間矩陣
-    getLightSpaceMatrix() {
-        return this.lightSpaceMatrix;
+        this.animation.flickerAmplitude = amplitude;
+        this.animation.flickerFrequency = frequency;
     }
     
     // 獲取主光源資訊
@@ -202,7 +139,8 @@ class Lighting {
         return {
             position: [...this.mainLight.position],
             color: [...this.mainLight.color],
-            intensity: this.mainLight.intensity
+            intensity: this.mainLight.intensity,
+            attenuation: { ...this.mainLight.attenuation }
         };
     }
     
@@ -214,15 +152,13 @@ class Lighting {
         };
     }
     
-    // 獲取陰影設定
-    getShadowSettings() {
-        return { ...this.shadowSettings };
-    }
-    
-    // 計算光照強度（在指定位置）
+    // 計算指定位置的光照強度
     calculateIntensityAtPosition(position) {
         const lightPos = this.mainLight.position;
-        const distance = MatrixLib.distance(position, lightPos);
+        const dx = position[0] - lightPos[0];
+        const dy = position[1] - lightPos[1];
+        const dz = position[2] - lightPos[2];
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         
         const attenuation = this.mainLight.attenuation.constant +
                            this.mainLight.attenuation.linear * distance +
@@ -231,42 +167,33 @@ class Lighting {
         return this.mainLight.intensity / Math.max(1.0, attenuation);
     }
     
-    // 計算光照方向（從位置指向光源）
+    // 計算從位置到光源的方向向量
     getLightDirectionFromPosition(position) {
-        const direction = MatrixLib.subtract(this.mainLight.position, position);
-        return MatrixLib.normalize(direction);
+        const dx = this.mainLight.position[0] - position[0];
+        const dy = this.mainLight.position[1] - position[1];
+        const dz = this.mainLight.position[2] - position[2];
+        const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+        if (length === 0) return [0, 1, 0];
+        
+        return [dx / length, dy / length, dz / length];
     }
     
-    // 檢查位置是否被光照
+    // 檢查位置是否被有效光照
     isPositionLit(position, threshold = 0.1) {
         return this.calculateIntensityAtPosition(position) > threshold;
     }
     
-    // 創建光源調試資訊
-    getDebugInfo() {
-        return {
-            mainLight: this.getMainLight(),
-            ambientLight: this.getAmbientLight(),
-            animation: {
-                enabled: this.animation.enabled,
-                time: this.animation.time,
-                amplitude: this.animation.amplitude,
-                frequency: this.animation.frequency
-            },
-            shadowSettings: this.getShadowSettings()
-        };
-    }
-    
-    // 重置到預設值
+    // 重置光照到預設值
     reset() {
         this.mainLight = {
             position: [0, 400, 0],
-            color: [1.0, 1.0, 0.9],
-            intensity: 1.0,
+            color: [1.0, 1.0, 0.95],
+            intensity: 2.0,
             attenuation: {
                 constant: 1.0,
-                linear: 0.0014,
-                quadratic: 0.000007
+                linear: 0.0005,
+                quadratic: 0.000001
             }
         };
         
@@ -278,38 +205,30 @@ class Lighting {
         this.animation = {
             enabled: false,
             time: 0,
-            amplitude: 0.2,
-            frequency: 0.5
+            flickerAmplitude: 0.1,
+            flickerFrequency: 2.0
         };
         
-        this.updateLightMatrices();
+        console.log('Lighting system reset to defaults');
     }
     
-    // 從設定載入光照參數
-    loadSettings(settings) {
-        if (settings.mainLight) {
-            Object.assign(this.mainLight, settings.mainLight);
-        }
-        if (settings.ambientLight) {
-            Object.assign(this.ambientLight, settings.ambientLight);
-        }
-        if (settings.animation) {
-            Object.assign(this.animation, settings.animation);
-        }
-        if (settings.shadowSettings) {
-            Object.assign(this.shadowSettings, settings.shadowSettings);
-        }
-        
-        this.updateLightMatrices();
-    }
-    
-    // 匯出設定
-    exportSettings() {
+    // 獲取光照除錯資訊
+    getDebugInfo() {
         return {
             mainLight: this.getMainLight(),
             ambientLight: this.getAmbientLight(),
             animation: { ...this.animation },
-            shadowSettings: this.getShadowSettings()
+            intensityAtOrigin: this.calculateIntensityAtPosition([0, 0, 0]),
+            intensityAtTank: this.calculateIntensityAtPosition([0, 2, 0])
         };
+    }
+    
+    // 渲染光源視覺化（除錯用）
+    renderLightDebug(webglCore, shaderManager, camera) {
+        // 這裡可以渲染一個小球體來視覺化光源位置
+        // 目前只輸出到控制台
+        if (window.DEBUG) {
+            console.log('Light source at:', this.mainLight.position);
+        }
     }
 }

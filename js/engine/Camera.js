@@ -15,17 +15,15 @@ class Camera {
         this.near = 0.1;
         this.far = 1000.0;
         
-        // 視角模式
-        this.viewMode = 'third';
+        // 視角切換flag
+        this.isInFirstPerson = false;  // false = 第三人稱, true = 第一人稱
         
-        // 相機位置：前(0)、右側(1)、後(2)、左側(3)
-        this.cameraPositions = ['front', 'right', 'back', 'left'];
-        this.currentCameraIndex = 2; // 初始在後方
-        this.cameraDistance = 80;
-        this.cameraHeight = 30;
-        
-        // 跟隨目標（坦克核心）
+        // 跟隨目標（坦克）
         this.followTarget = null;
+        
+        // 兩個視角偏移量（相對於坦克中心）
+        this.thirdPersonOffset = [0, 20, -35];     // 第三人稱位置（後方俯視）
+        this.firstPersonOffset = [0, 5.5, 12];    // 第一人稱位置（砲管末端）
         
         // 矩陣
         this.viewMatrix = MatrixLib.identity();
@@ -55,125 +53,140 @@ class Camera {
         this.updateProjectionMatrix();
     }
     
-    // 切換視角模式
+    // 切換視角模式 - 第三人稱 ↔ 第一人稱
     toggleViewMode() {
-        this.viewMode = this.viewMode === 'first' ? 'third' : 'first';
-        console.log(`Camera switched to ${this.viewMode} person view`);
+        console.log('=== CAMERA toggleViewMode CALLED ===');
+        console.log('Current isInFirstPerson:', this.isInFirstPerson);
         
-        // 立即更新攝影機位置
-        this.update();
-        return this.viewMode;
+        this.isInFirstPerson = !this.isInFirstPerson;
+        
+        console.log('New isInFirstPerson:', this.isInFirstPerson);
+        
+        // 立即重新載入相機位置
+        this.reloadCameraPosition();
+        
+        const mode = this.isInFirstPerson ? 'first' : 'third';
+        console.log(`Camera toggled to: ${mode} person mode`);
+        return mode;
     }
     
-    // 設定視角模式
-    setViewMode(mode) {
-        if (mode === 'first' || mode === 'third') {
-            this.viewMode = mode;
+    // 重新載入相機位置
+    reloadCameraPosition() {
+        console.log('=== CAMERA reloadCameraPosition CALLED ===');
+        
+        if (!this.followTarget) {
+            console.log('No follow target, aborting reload');
+            return;
         }
-    }
-    
-    // Q鍵 - 向左切換相機位（後→左→前→右→後）
-    rotateThirdPersonLeft() {
-        this.currentCameraIndex = (this.currentCameraIndex + 1) % 4; // 向左
-        console.log(`Camera position: ${this.cameraPositions[this.currentCameraIndex]}`);
-    }
-    
-    // E鍵 - 向右切換相機位（後→右→前→左→後）
-    rotateThirdPersonRight() {
-        this.currentCameraIndex = (this.currentCameraIndex + 3) % 4; // 向右
-        console.log(`Camera position: ${this.cameraPositions[this.currentCameraIndex]}`);
-    }
-    
-    // 更新第三人稱攝影機（相對於坦克方向）
-    updateThirdPerson() {
-        if (!this.followTarget) return;
         
-        const coreWorldPos = this.followTarget.getPosition();
+        const tankPosition = this.followTarget.getPosition();
         const tankRotation = this.followTarget.getRotationY();
         
-        // 四個相對方向的偏移量（相對於坦克朝向）
-        const relativeOffsets = [
-            [0, 0, this.cameraDistance],   // 前 - 相機在坦克前方，回頭看坦克
-            [this.cameraDistance, 0, 0],  // 右側 - 相機在坦克右側，看向坦克
-            [0, 0, -this.cameraDistance], // 後 - 相機在坦克後方，看向坦克
-            [-this.cameraDistance, 0, 0]  // 左側 - 相機在坦克左側，看向坦克
-        ];
+        console.log('Tank position:', tankPosition);
+        console.log('Tank rotation:', tankRotation);
         
-        const relativeOffset = relativeOffsets[this.currentCameraIndex];
+        if (this.isInFirstPerson) {
+            // 第一人稱：從砲管末端看出去
+            this.setupFirstPersonView(tankPosition, tankRotation);
+        } else {
+            // 第三人稱：後方俯視
+            this.setupThirdPersonView(tankPosition, tankRotation);
+        }
         
-        // 將相對偏移量轉換為世界坐標偏移量
-        const worldOffset = [
-            relativeOffset[0] * Math.cos(tankRotation) - relativeOffset[2] * Math.sin(tankRotation),
-            relativeOffset[1],
-            relativeOffset[0] * Math.sin(tankRotation) + relativeOffset[2] * Math.cos(tankRotation)
-        ];
-        
-        // 相機世界座標位置
-        this.position = [
-            coreWorldPos[0] + worldOffset[0],
-            coreWorldPos[1] + this.cameraHeight,
-            coreWorldPos[2] + worldOffset[2]
-        ];
-        
-        // 始終看向坦克核心
-        this.target = [
-            coreWorldPos[0],
-            coreWorldPos[1],
-            coreWorldPos[2]
-        ];
+        console.log('Camera reloaded successfully');
     }
     
-    // 更新第一人稱攝影機
-    updateFirstPerson() {
-        if (!this.followTarget) return;
+    // 設定第一人稱視角（從砲管末端看出去）
+    setupFirstPersonView(tankPosition, tankRotation) {
+        console.log('Setting up first person view from barrel end');
         
-        const tankWorldPos = this.followTarget.getPosition();
-        const tankRotation = this.followTarget.getRotationY();
+        // 砲管末端位置（相對於坦克中心）
+        const barrelEndOffset = this.firstPersonOffset;
         
-        // 攝影機在坦克內部的世界坐標位置
-        const cameraHeight = 8;
-        const cameraOffset = 2;
+        // 轉換到世界座標
+        const worldOffset = this.transformLocalToWorld(barrelEndOffset, tankRotation);
         
+        // 相機位置：砲管末端
         this.position = [
-            tankWorldPos[0] + Math.sin(tankRotation) * cameraOffset,
-            tankWorldPos[1] + cameraHeight,
-            tankWorldPos[2] + Math.cos(tankRotation) * cameraOffset
+            tankPosition[0] + worldOffset[0],
+            tankPosition[1] + worldOffset[1],
+            tankPosition[2] + worldOffset[2]
         ];
         
-        // 攝影機目標點的世界坐標
-        const lookDistance = 30;
+        // 目標：砲管射擊方向的遠點
+        const forwardDir = this.transformLocalToWorld([0, 0, 100], tankRotation);
         this.target = [
-            tankWorldPos[0] + Math.sin(tankRotation) * lookDistance,
-            tankWorldPos[1] + cameraHeight,
-            tankWorldPos[2] + Math.cos(tankRotation) * lookDistance
+            this.position[0] + forwardDir[0],
+            this.position[1] + forwardDir[1],
+            this.position[2] + forwardDir[2]
         ];
+        
+        console.log('First person camera position:', this.position);
+        console.log('First person camera target:', this.target);
+        
+        // 更新視圖矩陣
+        this.viewMatrix = MatrixLib.lookAt(this.position, this.target, this.up);
+    }
+    
+    // 設定第三人稱視角（後方俯視）
+    setupThirdPersonView(tankPosition, tankRotation) {
+        console.log('Setting up third person view');
+        
+        // 第三人稱偏移量
+        const offset = this.thirdPersonOffset;
+        
+        // 轉換到世界座標
+        const worldOffset = this.transformLocalToWorld(offset, tankRotation);
+        
+        // 相機位置：坦克後方
+        this.position = [
+            tankPosition[0] + worldOffset[0],
+            tankPosition[1] + worldOffset[1],
+            tankPosition[2] + worldOffset[2]
+        ];
+        
+        // 目標：坦克中心
+        this.target = [
+            tankPosition[0],
+            tankPosition[1] + 4,
+            tankPosition[2]
+        ];
+        
+        console.log('Third person camera position:', this.position);
+        console.log('Third person camera target:', this.target);
+        
+        // 更新視圖矩陣
+        this.viewMatrix = MatrixLib.lookAt(this.position, this.target, this.up);
     }
     
     // 更新攝影機
     update() {
         if (!this.followTarget) return;
         
-        switch (this.viewMode) {
-            case 'first':
-                this.updateFirstPerson();
-                break;
-            case 'third':
-                this.updateThirdPerson();
-                break;
-        }
+        const tankPosition = this.followTarget.getPosition();
+        const tankRotation = this.followTarget.getRotationY();
         
-        // 更新視圖矩陣
-        this.viewMatrix = MatrixLib.lookAt(this.position, this.target, this.up);
+        if (this.isInFirstPerson) {
+            // 第一人稱：從砲管末端看出去
+            this.setupFirstPersonView(tankPosition, tankRotation);
+        } else {
+            // 第三人稱：後方俯視
+            this.setupThirdPersonView(tankPosition, tankRotation);
+        }
     }
     
-    // 手動設定攝影機位置（除錯用）
-    setPosition(x, y, z) {
-        this.position = [x, y, z];
-    }
-    
-    // 手動設定攝影機目標（除錯用）
-    setTarget(x, y, z) {
-        this.target = [x, y, z];
+    // 將local space坐標轉換為world space坐標
+    transformLocalToWorld(localOffset, tankRotation) {
+        // 使用正確的旋轉矩陣
+        const cos = Math.cos(tankRotation);
+        const sin = Math.sin(tankRotation);
+        
+        // 繞Y軸旋轉變換
+        return [
+            localOffset[0] * cos + localOffset[2] * sin,  // X
+            localOffset[1],                               // Y (不旋轉)
+            -localOffset[0] * sin + localOffset[2] * cos  // Z
+        ];
     }
     
     // 獲取視圖矩陣
@@ -194,6 +207,38 @@ class Camera {
     // 獲取攝影機目標
     getTarget() {
         return [...this.target];
+    }
+    
+    // 獲取當前視角模式
+    getViewMode() {
+        return this.isInFirstPerson ? 'first' : 'third';
+    }
+    
+    // 設定視角模式
+    setViewMode(mode) {
+        if (mode === 'first') {
+            this.isInFirstPerson = true;
+        } else if (mode === 'third') {
+            this.isInFirstPerson = false;
+        }
+        this.reloadCameraPosition();
+    }
+    
+    // 重置攝影機
+    reset() {
+        this.isInFirstPerson = false;  // 重置為第三人稱模式
+        this.position = [0, 10, 20];
+        this.target = [0, 0, 0];
+    }
+    
+    // 設定第一人稱偏移
+    setFirstPersonOffset(x, y, z) {
+        this.firstPersonOffset = [x, y, z];
+    }
+    
+    // 設定第三人稱偏移
+    setThirdPersonOffset(x, y, z) {
+        this.thirdPersonOffset = [x, y, z];
     }
     
     // 獲取攝影機方向向量
@@ -257,26 +302,6 @@ class Camera {
         return clipPos[0] >= -1 && clipPos[0] <= 1 &&
                clipPos[1] >= -1 && clipPos[1] <= 1 &&
                clipPos[2] >= -1 && clipPos[2] <= 1;
-    }
-    
-    // 獲取當前視角模式
-    getViewMode() {
-        return this.viewMode;
-    }
-    
-    // 重置攝影機
-    reset() {
-        this.position = [0, 10, 20];
-        this.target = [0, 0, 0];
-        this.viewMode = 'third';
-        this.currentCameraIndex = 2; // 重置為後方
-        this.update();
-    }
-    
-    // 設定第三人稱參數
-    setThirdPersonParams(distance, height) {
-        this.thirdPersonDistance = distance;
-        this.thirdPersonHeight = height;
     }
     
     // 平滑攝影機移動（未來可用於轉換動畫）

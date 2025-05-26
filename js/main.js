@@ -53,6 +53,9 @@ class TankBattleGame {
             
             console.log('Game initialized successfully');
             
+            // 測試輸入系統
+            this.testInputSystem();
+            
             // 開始遊戲循環
             this.start();
             
@@ -192,68 +195,128 @@ class TankBattleGame {
         });
     }
     
+    // 測試輸入系統
+    testInputSystem() {
+        console.log('=== TESTING INPUT SYSTEM ===');
+        console.log('InputHandler exists:', !!this.inputHandler);
+        console.log('InputHandler enabled:', this.inputHandler?.enabled);
+        
+        // 測試基本功能
+        if (this.inputHandler) {
+            console.log('InputHandler methods available:');
+            console.log('- getActionInput:', typeof this.inputHandler.getActionInput);
+            console.log('- update:', typeof this.inputHandler.update);
+            console.log('- isKeyPressed:', typeof this.inputHandler.isKeyPressed);
+            
+            // 設定測試按鍵監聽
+            const testKeyHandler = (event) => {
+                if (event.key === 'p' || event.key === 'P') {
+                    console.log('=== GAME: P KEY DETECTED IN DOCUMENT ===');
+                    console.log('Game input enabled:', this.inputHandler.enabled);
+                    
+                    // 手動觸發輸入檢查
+                    setTimeout(() => {
+                        const actions = this.inputHandler.getActionInput();
+                        console.log('Manual action check:', actions);
+                    }, 50);
+                }
+            };
+            
+            document.addEventListener('keydown', testKeyHandler);
+            
+            console.log('Input system test setup complete');
+        } else {
+            console.error('InputHandler not initialized!');
+        }
+    }
+    
     // 處理輸入
     handleInput() {
+        // 檢查 InputHandler 是否存在
+        if (!this.inputHandler) {
+            console.error('InputHandler is null in handleInput!');
+            return;
+        }
+        
         const movement = this.inputHandler.getMovementInput();
         const actions = this.inputHandler.getActionInput();
         
-        // 除錯：檢查所有操作輸入
-        if (Object.values(actions).some(action => action)) {
-            console.log('Actions detected:', actions);
+        // 除錯：顯示當前輸入狀態
+        console.log(`handleInput called - keyJustPressed size: ${this.inputHandler.keyJustPressed.size}`);
+        if (this.inputHandler.keyJustPressed.size > 0) {
+            console.log('Current keyJustPressed:', Array.from(this.inputHandler.keyJustPressed));
+        }
+        
+        // 強制檢查P鍵狀態
+        if (actions.toggleView) {
+            console.log('=== HANDLE INPUT: P KEY DETECTED ===');
+            console.log('actions object:', actions);
+            console.log('Camera exists:', !!this.camera);
+            
+            if (this.camera) {
+                // 切換模式並重新載入
+                const newMode = this.camera.toggleViewMode();
+                console.log('Camera toggled to:', newMode);
+                
+                // 強制再次重新載入以確保位置正確
+                this.camera.reloadCameraPosition();
+                console.log('Camera position reloaded');
+                
+                // 更新UI
+                if (this.ui) {
+                    this.ui.updateViewIndicator(newMode);
+                    console.log('UI updated');
+                }
+                
+                this.showViewModeMessage(newMode);
+                console.log('View mode message shown');
+            } else {
+                console.error('Camera not initialized!');
+            }
+        } else {
+            // 顯示為什麼沒有觸發
+            if (this.inputHandler.keyJustPressed.has('p') || this.inputHandler.keyJustPressed.has('P')) {
+                console.log('P key in keyJustPressed but toggleView is false!');
+                console.log('Debug getActionInput result:', actions);
+            }
         }
         
         // 坦克移動
-        const tankMoved = this.tank.update(this.deltaTime, this.inputHandler);
+        if (this.tank) {
+            const tankMoved = this.tank.update(this.deltaTime, this.inputHandler);
+            
+            if (tankMoved && this.camera) {
+                this.camera.update();
+            }
+        }
         
         // 射擊
         if (actions.fire) {
-            console.log('Fire button pressed!');
-            const firePos = this.tank.getFirePosition();
-            const fireDir = this.tank.getFireDirection();
-            this.bulletManager.fire(firePos, fireDir);
-            this.gameManager.onBulletFired();
-        }
-        
-        // 視角切換
-        if (actions.toggleView) {
-            console.log('Toggle view pressed!');
-            const newMode = this.camera.toggleViewMode();
-            console.log('New view mode:', newMode);
-            
-            // 更新UI指示器
-            if (this.ui) {
-                this.ui.updateViewIndicator(newMode);
-            }
-        }
-        
-        // 第三人稱視角旋轉
-        if (actions.rotateViewLeft) {
-            console.log('Rotate view left! (Q key pressed)');
-            if (this.camera.viewMode === 'third') {
-                this.camera.rotateThirdPersonLeft();
-            }
-        }
-        if (actions.rotateViewRight) {
-            console.log('Rotate view right! (E key pressed)');
-            if (this.camera.viewMode === 'third') {
-                this.camera.rotateThirdPersonRight();
+            console.log('=== FIRE ACTION ===');
+            if (this.tank && this.bulletManager) {
+                const firePos = this.tank.getFirePosition();
+                const fireDir = this.tank.getFireDirection();
+                this.bulletManager.fire(firePos, fireDir);
+                this.gameManager.onBulletFired();
             }
         }
         
         // 重置遊戲
         if (actions.reset) {
-            console.log('Reset pressed!');
+            console.log('=== RESET ACTION ===');
             this.resetGame();
         }
     }
     
     // 更新遊戲邏輯
     update() {
-        // 更新輸入處理
-        this.inputHandler.update();
+        // *** 重要：先處理輸入，再更新輸入處理器 ***
         
-        // 處理輸入
+        // 處理輸入 - 在 inputHandler.update() 之前
         this.handleInput();
+        
+        // 更新輸入處理 - 清除 keyJustPressed
+        this.inputHandler.update();
         
         // 更新光照系統
         this.lighting.update(this.deltaTime);
@@ -442,6 +505,45 @@ class TankBattleGame {
                 errorDiv.parentNode.removeChild(errorDiv);
             }
         }, 5000);
+    }
+    
+    // 顯示視角切換訊息
+    showViewModeMessage(mode) {
+        const message = mode === 'first' ? '第一人稱視角' : '第三人稱視角';
+        
+        // 移除之前的訊息
+        const existingMessage = document.getElementById('viewModeMessage');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+        
+        // 創建新訊息
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'viewModeMessage';
+        messageDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            z-index: 1000;
+            pointer-events: none;
+        `;
+        messageDiv.textContent = message;
+        document.body.appendChild(messageDiv);
+        
+        // 2秒後自動移除
+        setTimeout(() => {
+            if (messageDiv.parentNode) {
+                messageDiv.parentNode.removeChild(messageDiv);
+            }
+        }, 2000);
+        
+        console.log(`View mode message displayed: ${message}`);
     }
     
     // 獲取遊戲狀態（除錯用）

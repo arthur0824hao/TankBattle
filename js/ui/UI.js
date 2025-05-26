@@ -165,16 +165,12 @@ class UI {
     }
     
     // 更新視角指示器
-    updateViewIndicator(viewMode) {
-        if (this.elements.viewIndicator) {
-            const indicator = this.elements.viewIndicator;
-            indicator.textContent = viewMode === 'first' ? '第一人稱' : '第三人稱';
-            
-            // 添加視覺效果
-            indicator.classList.toggle('third-person', viewMode === 'third');
-            
-            // 閃爍效果
-            this.flashElement(indicator);
+    updateViewIndicator(mode) {
+        const indicator = document.getElementById('viewIndicator');
+        if (indicator) {
+            const modeText = mode === 'first' ? '第一人稱' : '第三人稱';
+            indicator.textContent = modeText;
+            console.log(`View indicator updated to: ${modeText}`);
         }
     }
     

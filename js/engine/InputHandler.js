@@ -21,6 +21,11 @@ class InputHandler {
         this.canvas = null;
         this.enabled = true;
         
+        // 除錯標記
+        this.debugMode = true;
+        this.frameCount = 0;
+        
+        console.log('InputHandler constructor called');
         this.setupEventListeners();
     }
     
@@ -49,27 +54,38 @@ class InputHandler {
     
     // 鍵盤按下事件
     onKeyDown(event) {
-        if (!this.enabled) return;
+        if (!this.enabled) {
+            if (this.debugMode) console.log('InputHandler disabled, ignoring keydown');
+            return;
+        }
         
         const key = event.key;
         
+        // 特別檢查P鍵
+        if (key === 'p' || key === 'P') {
+            console.log('=== P KEY DETECTED IN onKeyDown ===');
+            console.log('Key:', key, 'Enabled:', this.enabled);
+            console.log('Keys set size before:', this.keys.size);
+            console.log('JustPressed set size before:', this.keyJustPressed.size);
+        }
+        
+        // 只檢測首次按下
         if (!this.keys.has(key)) {
             this.keyJustPressed.add(key);
             
-            // 立即輸出除錯資訊
-            if (key === 'q' || key === 'Q') {
-                console.log('Q key just pressed');
+            if (key === 'p' || key === 'P') {
+                console.log('P key added to keyJustPressed set');
+                console.log('keyJustPressed contents:', Array.from(this.keyJustPressed));
             }
-            if (key === 'e' || key === 'E') {
-                console.log('E key just pressed');
-            }
+        } else if (key === 'p' || key === 'P') {
+            console.log('P key already in keys set, not adding to justPressed');
         }
         
         this.keys.add(key);
         
-        // 立即處理特殊按鍵
         if (key === 'p' || key === 'P') {
-            console.log('P key detected for view toggle');
+            console.log('Keys set size after:', this.keys.size);
+            console.log('JustPressed set size after:', this.keyJustPressed.size);
         }
     }
     
@@ -181,6 +197,11 @@ class InputHandler {
     
     // 更新輸入狀態（每幀調用）
     update() {
+        // 記錄清除前的狀態
+        if (this.debugMode && this.keyJustPressed.size > 0) {
+            console.log('Before update clear - keyJustPressed:', Array.from(this.keyJustPressed));
+        }
+        
         // 清除單次事件
         this.keyJustPressed.clear();
         this.keyJustReleased.clear();
@@ -189,6 +210,10 @@ class InputHandler {
         this.mouse.deltaX = 0;
         this.mouse.deltaY = 0;
         this.mouse.wheelDelta = 0;
+        
+        if (this.debugMode && this.frameCount % 60 === 0) {
+            console.log(`Frame ${this.frameCount} - Input update completed`);
+        }
     }
     
     // 啟用/禁用輸入
@@ -217,11 +242,11 @@ class InputHandler {
         this.mouse.wheelDelta = 0;
     }
     
-    // 檢查移動按鍵組合
+    // 檢查移動按鍵組合（移除W/S）
     getMovementInput() {
         return {
-            forward: this.isKeyPressed('w') || this.isKeyPressed('W'),
-            backward: this.isKeyPressed('s') || this.isKeyPressed('S'),
+            // forward: this.isKeyPressed('w') || this.isKeyPressed('W'),  // 移除
+            // backward: this.isKeyPressed('s') || this.isKeyPressed('S'), // 移除
             left: this.isKeyPressed('a') || this.isKeyPressed('A'),
             right: this.isKeyPressed('d') || this.isKeyPressed('D'),
             elevateUp: this.isKeyPressed('ArrowUp'),
@@ -231,13 +256,37 @@ class InputHandler {
     
     // 檢查操作按鍵
     getActionInput() {
-        return {
-            fire: this.isKeyJustPressed(' '), // 空白鍵
-            toggleView: this.isKeyJustPressed('p') || this.isKeyJustPressed('P'),
-            rotateViewLeft: this.isKeyJustPressed('q') || this.isKeyJustPressed('Q'),
-            rotateViewRight: this.isKeyJustPressed('e') || this.isKeyJustPressed('E'),
-            reset: this.isKeyJustPressed('r') || this.isKeyJustPressed('R')
+        this.frameCount++;
+        
+        // 檢查P鍵狀態 - 詳細除錯
+        const pKeyPressed = this.keyJustPressed.has('p') || this.keyJustPressed.has('P');
+        
+        console.log(`=== getActionInput Frame ${this.frameCount} ===`);
+        console.log('keyJustPressed size:', this.keyJustPressed.size);
+        console.log('keyJustPressed contents:', Array.from(this.keyJustPressed));
+        console.log('P key check results:');
+        console.log('- has("p"):', this.keyJustPressed.has('p'));
+        console.log('- has("P"):', this.keyJustPressed.has('P'));
+        console.log('- pKeyPressed result:', pKeyPressed);
+        
+        if (pKeyPressed) {
+            console.log('=== P KEY DETECTED IN getActionInput ===');
+            console.log('Frame:', this.frameCount);
+        }
+        
+        const toggleView = pKeyPressed;
+        const fire = this.keyJustPressed.has(' ');
+        const reset = this.keyJustPressed.has('r') || this.keyJustPressed.has('R');
+        
+        const result = {
+            fire: fire,
+            toggleView: toggleView,
+            reset: reset
         };
+        
+        console.log('Final action input result:', result);
+        
+        return result;
     }
     
     // 獲取所有按下的按鍵（除錯用）
@@ -267,5 +316,18 @@ class InputHandler {
             },
             wheelDelta: this.mouse.wheelDelta
         };
+    }
+    
+    // 設定除錯模式
+    setDebugMode(enabled) {
+        this.debugMode = enabled;
+        console.log('InputHandler debug mode:', enabled);
+    }
+    
+    // 強制觸發P鍵（測試用）
+    triggerPKey() {
+        console.log('=== MANUAL P KEY TRIGGER ===');
+        this.keyJustPressed.add('p');
+        console.log('keyJustPressed after manual trigger:', Array.from(this.keyJustPressed));
     }
 }

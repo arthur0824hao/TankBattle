@@ -1,6 +1,6 @@
 /**
  * 目標球類別
- * 管理不同類型的目標球（白球、藍球、紅球）
+ * 管理不同類型的目標球（白球、藍球、紅球）- 地面版本
  */
 class Target {
     constructor(webglCore, shaderManager, type) {
@@ -21,10 +21,6 @@ class Target {
         // 動畫屬性
         this.rotationY = 0;
         this.rotationSpeed = MatrixLib.degToRad(30); // 30度/秒
-        this.bobOffset = Math.random() * Math.PI * 2; // 隨機浮動偏移
-        this.bobSpeed = 2.0; // 浮動速度
-        this.bobHeight = 1.0; // 浮動高度
-        this.baseHeight = 0;
         
         // 幾何體和材質
         this.geometry = null;
@@ -40,7 +36,7 @@ class Target {
         
         switch (this.type) {
             case 'white':
-                this.radius = baseRadius * 3; // 60單位
+                this.radius = baseRadius * 1.2; // 60單位
                 this.score = 1;
                 this.material = {
                     ambient: [0.3, 0.3, 0.3],
@@ -50,7 +46,7 @@ class Target {
                 };
                 break;
             case 'blue':
-                this.radius = baseRadius * 2; // 40單位
+                this.radius = baseRadius * 0.75; // 40單位
                 this.score = 5;
                 this.material = {
                     ambient: [0.1, 0.1, 0.3],
@@ -60,7 +56,7 @@ class Target {
                 };
                 break;
             case 'red':
-                this.radius = baseRadius; // 20單位
+                this.radius = baseRadius*0.5; // 20單位
                 this.score = 10;
                 this.material = {
                     ambient: [0.3, 0.1, 0.1],
@@ -127,16 +123,18 @@ class Target {
         };
     }
     
-    // 隨機化位置
+    // 隨機化位置（地面版本）
     randomizePosition() {
         const boundarySize = 700; // 比場景邊界小一點
-        const minHeight = this.radius + 10;
-        const maxHeight = 200;
         
+        // X和Z軸隨機位置
         this.position[0] = (Math.random() - 0.5) * 2 * boundarySize;
         this.position[2] = (Math.random() - 0.5) * 2 * boundarySize;
-        this.baseHeight = Math.random() * (maxHeight - minHeight) + minHeight;
-        this.position[1] = this.baseHeight;
+        
+        // Y軸位置：球體半徑，使球體剛好接觸地面
+        this.position[1] = this.radius;
+        
+        console.log(`${this.type} target positioned at ground level: [${this.position.map(v => v.toFixed(1)).join(', ')}]`);
     }
     
     // 更新目標狀態
@@ -150,12 +148,8 @@ class Target {
             return;
         }
         
-        // 旋轉動畫
+        // 旋轉動畫（保持原地旋轉）
         this.rotationY += this.rotationSpeed * deltaTime;
-        
-        // 浮動動畫
-        const bobTime = Date.now() * 0.001 * this.bobSpeed + this.bobOffset;
-        this.position[1] = this.baseHeight + Math.sin(bobTime) * this.bobHeight;
         
         this.updateMatrix();
     }
@@ -222,6 +216,18 @@ class Target {
         this.webglCore.drawElements(this.gl.TRIANGLES, this.geometry.indexCount);
     }
     
+    // 渲染陰影
+    renderShadow(program) {
+        if (!this.active) return;
+        
+        this.webglCore.setUniform(program, 'uModelMatrix', this.modelMatrix, 'mat4');
+        
+        this.webglCore.bindVertexAttribute(program, 'aPosition', this.geometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 0);
+        
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.geometry.indexBuffer);
+        this.webglCore.drawElements(this.gl.TRIANGLES, this.geometry.indexCount);
+    }
+    
     // 獲取位置
     getPosition() {
         return [...this.position];
@@ -250,6 +256,11 @@ class Target {
     // 獲取重生剩餘時間
     getRespawnTimeRemaining() {
         return Math.max(0, this.respawnTime - this.respawnTimer);
+    }
+    
+    // 獲取模型矩陣（用於陰影渲染）
+    getModelMatrix() {
+        return this.modelMatrix;
     }
 }
 
@@ -281,7 +292,7 @@ class TargetManager {
         // 1個紅球
         this.targets.push(new Target(this.webglCore, this.shaderManager, 'red'));
         
-        console.log(`Created ${this.targets.length} targets`);
+        console.log(`Created ${this.targets.length} ground-level targets`);
     }
     
     // 更新所有目標
