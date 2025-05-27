@@ -12,7 +12,7 @@ class Bullet {
         this.position = [...startPosition];
         this.direction = [...direction];
         this.speed = speed;
-        this.radius = 0.5;
+        this.radius = 1.0; // 放大至兩倍（從0.5改為1.0）
         this.active = true;
         
         // 生命週期
@@ -29,12 +29,12 @@ class Bullet {
         this.geometry = null;
         this.modelMatrix = MatrixLib.identity();
         
-        // 材質屬性 - 修正為金黃色砲彈
+        // 材質屬性 - 修正為適合金屬紋理的材質
         this.material = {
-            ambient: [0.2, 0.15, 0.05],   // 暗金色環境光
-            diffuse: [0.8, 0.6, 0.2],     // 金黃色
-            specular: [1.0, 0.9, 0.7],    // 金色高光
-            shininess: 64.0
+            ambient: [0.2, 0.2, 0.2],
+            diffuse: [0.8, 0.8, 0.8],
+            specular: [1.0, 1.0, 1.0],
+            shininess: 128.0
         };
         
         this.createGeometry();
@@ -178,8 +178,8 @@ class Bullet {
         );
     }
     
-    // 渲染砲彈
-    render(camera, lighting) {
+    // 渲染砲彈（修改為支持紋理）
+    render(camera, lighting, textureManager = null) {
         if (!this.active || !this.geometry) return;
         
         const program = this.shaderManager.useProgram('phong');
@@ -207,7 +207,15 @@ class Bullet {
         this.webglCore.setUniform(program, 'uDiffuseColor', this.material.diffuse, 'vec3');
         this.webglCore.setUniform(program, 'uSpecularColor', this.material.specular, 'vec3');
         this.webglCore.setUniform(program, 'uShininess', this.material.shininess, 'float');
-        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        
+        // 使用metal.jpg紋理
+        if (textureManager) {
+            textureManager.bindTexture('metal', 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+        } else {
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        }
         
         // 綁定頂點屬性
         const positionBound = this.webglCore.bindVertexAttribute(
@@ -366,10 +374,10 @@ class BulletManager {
         this.bullets = this.bullets.filter(bullet => bullet.isActive());
     }
     
-    // 渲染所有砲彈
-    render(camera, lighting) {
+    // 渲染所有砲彈（修改為支持紋理）
+    render(camera, lighting, textureManager = null) {
         this.bullets.forEach(bullet => {
-            bullet.render(camera, lighting);
+            bullet.render(camera, lighting, textureManager);
         });
     }
     

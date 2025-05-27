@@ -29,24 +29,24 @@ class Tank {
         this.turretMatrix = MatrixLib.identity();
         this.barrelMatrix = MatrixLib.identity();
         
-        // 材質屬性 - 修正顏色設定
+        // 材質屬性 - 修正為適合紋理的材質
         this.materials = {
             base: {
-                ambient: [0.1, 0.3, 0.1],    // 綠色環境光
-                diffuse: [0.2, 0.8, 0.2],    // 主要綠色
-                specular: [0.3, 0.3, 0.3],   // 白色高光
+                ambient: [0.2, 0.2, 0.2],
+                diffuse: [0.8, 0.8, 0.8],
+                specular: [0.3, 0.3, 0.3],
                 shininess: 32.0
             },
             turret: {
-                ambient: [0.15, 0.25, 0.1],  // 稍暗的綠色環境光
-                diffuse: [0.3, 0.7, 0.2],    // 深綠色
-                specular: [0.4, 0.4, 0.4],   // 白色高光
+                ambient: [0.2, 0.2, 0.2],
+                diffuse: [0.8, 0.8, 0.8],
+                specular: [0.4, 0.4, 0.4],
                 shininess: 64.0
             },
             barrel: {
-                ambient: [0.2, 0.2, 0.2],    // 灰色環境光
-                diffuse: [0.6, 0.6, 0.6],    // 灰色金屬
-                specular: [0.8, 0.8, 0.8],   // 強烈白色高光
+                ambient: [0.2, 0.2, 0.2],
+                diffuse: [0.8, 0.8, 0.8],
+                specular: [0.8, 0.8, 0.8],
                 shininess: 128.0
             }
         };
@@ -417,8 +417,8 @@ class Tank {
         return this.baseMatrix;
     }
     
-    // 渲染坦克組件
-    renderComponent(geometry, material, matrix, camera, lighting) {
+    // 渲染坦克組件（添加紋理支持）
+    renderComponent(geometry, material, matrix, camera, lighting, textureManager, textureName) {
         const program = this.shaderManager.useProgram('phong');
         if (!program) return;
         
@@ -444,7 +444,15 @@ class Tank {
         this.webglCore.setUniform(program, 'uDiffuseColor', material.diffuse, 'vec3');
         this.webglCore.setUniform(program, 'uSpecularColor', material.specular, 'vec3');
         this.webglCore.setUniform(program, 'uShininess', material.shininess, 'float');
-        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        
+        // 應用紋理
+        if (textureManager && textureName) {
+            textureManager.bindTexture(textureName, 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+        } else {
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        }
         
         // 綁定頂點屬性
         const positionBound = this.webglCore.bindVertexAttribute(
@@ -464,16 +472,16 @@ class Tank {
         }
     }
     
-    // 渲染坦克
-    render(camera, lighting) {
-        // 渲染底座
-        this.renderComponent(this.baseGeometry, this.materials.base, this.baseMatrix, camera, lighting);
+    // 渲染坦克（修改為支持紋理）
+    render(camera, lighting, textureManager = null) {
+        // 渲染底座 - 使用tankBase紋理
+        this.renderComponent(this.baseGeometry, this.materials.base, this.baseMatrix, camera, lighting, textureManager, 'tankBase');
         
-        // 渲染砲座
-        this.renderComponent(this.turretGeometry, this.materials.turret, this.turretMatrix, camera, lighting);
+        // 渲染砲座 - 使用tankTurret紋理
+        this.renderComponent(this.turretGeometry, this.materials.turret, this.turretMatrix, camera, lighting, textureManager, 'tankTurret');
         
-        // 渲染砲管
-        this.renderComponent(this.barrelGeometry, this.materials.barrel, this.barrelMatrix, camera, lighting);
+        // 渲染砲管 - 使用tankBarrel紋理
+        this.renderComponent(this.barrelGeometry, this.materials.barrel, this.barrelMatrix, camera, lighting, textureManager, 'tankBarrel');
     }
     
     // 渲染陰影
