@@ -388,16 +388,37 @@ class TargetManager {
         });
     }
     
-    // 生成隨機位置 - 調整到坦克炮管高度
+    // 生成隨機位置 - 添加距離檢查確保目標距離坦克至少30單位
     generateRandomPosition() {
         const boundary = 700; // 場景邊界內
         const tankBarrelHeight = 5.5; // 與坦克炮管相同高度
+        const minDistanceFromTank = 30; // 最小距離30單位
         
-        return [
-            (Math.random() - 0.5) * boundary * 2,
-            tankBarrelHeight, // 設置為與坦克炮管相同高度
-            (Math.random() - 0.5) * boundary * 2
-        ];
+        let position;
+        let attempts = 0;
+        const maxAttempts = 50;
+        
+        do {
+            position = [
+                (Math.random() - 0.5) * boundary * 2,
+                tankBarrelHeight,
+                (Math.random() - 0.5) * boundary * 2
+            ];
+            
+            // 計算與坦克的距離（假設坦克在原點）
+            const distanceFromTank = Math.sqrt(
+                position[0] * position[0] + position[2] * position[2]
+            );
+            
+            if (distanceFromTank >= minDistanceFromTank) {
+                break;
+            }
+            
+            attempts++;
+        } while (attempts < maxAttempts);
+        
+        console.log(`Target positioned at distance ${Math.sqrt(position[0] * position[0] + position[2] * position[2]).toFixed(1)} from tank`);
+        return position;
     }
     
     // 更新所有目標
@@ -414,29 +435,41 @@ class TargetManager {
         });
     }
     
-    // 檢查砲彈與目標的碰撞
+    // 簡化的碰撞檢測（移除計分和獎勵）
     checkCollisions(bullets) {
         const hits = [];
         
-        bullets.forEach(bullet => {
-            if (!bullet.isActive()) return;
+        bullets.forEach((bullet, bulletIndex) => {
+            if (!bullet.active) return;
             
-            this.targets.forEach(target => {
-                if (!target.isActive()) return;
+            this.targets.forEach((target, targetIndex) => {
+                if (!target.active) return;
                 
-                // 使用距離檢測
-                if (target.checkCollisionWithBullet(bullet.getPosition(), bullet.getRadius())) {
-                    const hitData = target.onHit();
-                    if (hitData) {
-                        hits.push({
-                            bullet: bullet,
-                            target: target,
-                            hitData: hitData
-                        });
-                        
-                        // 銷毀砲彈
-                        bullet.destroy();
-                    }
+                // 使用簡單的球體碰撞檢測：兩中心距離 < 兩半徑之和
+                const distance = MatrixLib.distance(bullet.position, target.position);
+                const collisionDistance = bullet.radius + target.radius;
+                
+                if (distance < collisionDistance) {
+                    console.log(`Target collision detected: distance=${distance.toFixed(2)}, threshold=${collisionDistance.toFixed(2)}`);
+                    
+                    // 記錄碰撞
+                    hits.push({
+                        target: target,
+                        bullet: bullet,
+                        targetIndex: targetIndex,
+                        bulletIndex: bulletIndex,
+                        targetType: target.type,
+                        position: [...target.position]
+                    });
+                    
+                    // 標記目標和砲彈為非活躍狀態
+                    target.active = false;
+                    bullet.active = false;
+                    
+                    // 設定目標重生
+                    target.respawnTime = this.respawnDelay;
+                    
+                    console.log(`${target.type} target hit and destroyed`);
                 }
             });
         });

@@ -21,90 +21,96 @@
 
 ### 砲彈物理
 - 固定速度發射
-- 撞擊到任意物體後損毀 射程到40 場上同時只能存在5顆砲彈 彈藥共有10發 
-- 若命中目標(追蹤砲彈跟目標的距離 若距離<目標半徑則命中) 摧毀該目標與該命中砲彈 並且彈藥量根據命中種類增加
+- 撞擊到任意物體後損毀
+- 射程限制：最多飛行5秒
+- 場上同時只能存在5顆砲彈
+- 彈藥數量：初始10發
 
 ### 目標物體
-- **白球**: 1分，半徑20 加一顆彈藥
-- **籃球**: 5分，半徑20  加兩顆彈藥
-- **紅球**: 10分，半徑20 加三顆彈藥
+- **白球**: 半徑20
+- **藍球**: 半徑20  
+- **紅球**: 半徑20
 
 ## 專案檔案結構
 
 ```
 D:.
-│   .gitignore
-│   index.html
-│   test.html
-│   需求.txt
-│   
-├───assets
-│   └───textures
-│       │   ground.jpg
-│       │   metal.jpg
-│       │   tank_barrel.jpg
-│       │   tank_base.jpg
-│       │   tank_turret.jpg
-│       │   target_texture.jpg
+│   .gitignore                  # Git忽略檔案設定
+│   index.html                  # 主遊戲頁面
+│   test.html                   # 紋理與Cube Map測試頁面
+│   需求.txt                    # 專題需求與進度追蹤文件
+│
+├───assets                      # 遊戲資源目錄
+│   └───textures               # 紋理檔案
+│       │   ground.jpg         # 地面紋理
+│       │   metal.jpg          # 金屬紋理
+│       │   tank_barrel.jpg    # 坦克砲管紋理
+│       │   tank_base.jpg      # 坦克底座紋理
+│       │   tank_turret.jpg    # 坦克砲座紋理
+│       │   target_texture.jpg # 目標球紋理
 │       │
-│       └───skybox
-│               nx.jpg
-│               ny.jpg
-│               nz.jpg
-│               px.jpg
-│               py.jpg
-│               pz.jpg
+│       └───skybox             # 天空盒紋理 (6面)
+│               nx.jpg         # 天空盒負X面
+│               ny.jpg         # 天空盒負Y面
+│               nz.jpg         # 天空盒負Z面
+│               px.jpg         # 天空盒正X面
+│               py.jpg         # 天空盒正Y面
+│               pz.jpg         # 天空盒正Z面
 │
-├───css
-│       style.css
+├───css                        # 樣式檔案
+│       style.css              # 主要CSS樣式
 │
-├───js
-│   │   main.js
+├───js                         # JavaScript程式碼
+│   │   main.js                # 主程式入口與遊戲循環
 │   │
-│   ├───engine
-│   │       Camera.js
-│   │       InputHandler.js
-│   │       Lighting.js
-│   │       Physics.js
-│   │       ShadowRenderer.js
+│   ├───engine                 # 引擎核心系統
+│   │       Camera.js          # 攝影機系統 (第一/第三人稱)
+│   │       InputHandler.js    # 輸入處理系統 (鍵盤控制)
+│   │       Lighting.js        # 光照系統 (點光源+Phong)
+│   │       Physics.js         # 物理系統 (重力+碰撞)
+│   │       ShadowRenderer.js  # 陰影渲染系統 (FBO)
 │   │
-│   ├───game
-│   │       Bullet.js
-│   │       BulletManager.js
-│   │       GameManager.js
-│   │       Scene.js
-│   │       Tank.js
-│   │       Target.js
+│   ├───game                   # 遊戲物件
+│   │       Bullet.js          # 砲彈類別
+│   │       BulletManager.js   # 砲彈管理系統
+│   │       GameManager.js     # 遊戲狀態管理
+│   │       Mirror.js          # 鏡面球 (Cube Map反射用)(動態渲染包含在其中了)
+│   │       Scene.js           # 場景管理 (地面+天空盒)
+│   │       Tank.js            # 坦克模型 (三組件設計)
+│   │       Target.js          # 目標球系統 (白/藍/紅球)
 │   │
-│   ├───ui
-│   │       UI.js
+│   ├───ui                     # 使用者介面
+│   │       UI.js              # UI管理器 (HUD+選單+訊息)
 │   │
-│   ├───utils
-│   │       CollisionUtils.js
-│   │       SystemCheck.js
-│   │       Utils.js
+│   ├───utils                  # 工具函式庫
+│   │       CollisionUtils.js  # 碰撞檢測工具
+│   │       SystemCheck.js     # 系統相容性檢查
+│   │       Utils.js           # 通用工具函式
 │   │
-│   └───webgl
-│           FrameBuffer.js
-│           MatrixLib.js
-│           ShaderManager.js
-│           TextureManager.js
-│           WebGLCore.js
+│   └───webgl                  # WebGL核心
+│           FrameBuffer.js     # FBO管理 (陰影+反射)
+│           MatrixLib.js       # 矩陣運算庫
+│           ShaderManager.js   # 著色器管理系統
+│           TextureManager.js  # 紋理載入與管理
+│           WebGLCore.js       # WebGL上下文包裝器
 │
-└───shaders
-        phong.frag
-        phong.vert
-        skybox.frag
-        skybox.vert
+└───shaders                    # GLSL著色器
+        phong.frag             # Phong光照片段著色器
+        phong.vert             # Phong光照頂點著色器
+        reflection.frag        # 反射效果片段著色器
+        reflection.vert        # 反射效果頂點著色器
+        skybox.frag            # 天空盒片段著色器
+        skybox.vert            # 天空盒頂點著色器
 ```
 
-# 進度追蹤(可以改)
+# 進度追蹤
 
 ## 作業要求分析 (PDF)
 
 ### ✅ Required User Interaction (30%)
 - [x] **Player物體**: 坦克作為player，可移動旋轉
 - [x] **第一人稱視角**: 攝影機跟隨坦克
+
 ### ✅ 視角控制系統
 - [x] **P鍵**: 切換第一人稱↔第三人稱視角
 - [x] **Q鍵**: 第三人稱時，視角以坦克為中心左轉90度
@@ -116,13 +122,13 @@ D:.
 - [x] **Point Light + Phong**: 1個點光源，local illumination (ambient+diffuse+specular)
 - [x] **Texture Mapping**: 地面使用ground.jpg紋理
 - [x] **Environment Cube Map**: 天空盒背景已實現
-- [ ] **Cube Map Reflection/Refraction**: 至少1個物體（需新增）
+- [ ] **Cube Map Reflection/Refraction**: 至少1個物體（Mirror.js開發中）
 - [x] **Moving Objects**: 目標球旋轉
 - [ ] **介紹文字**: 網頁底部說明
 
 ### ✅ Pick 2 out of 3 (20%)
 - [x] **Shadow**: 陰影效果
-- [x] **Dynamic Reflection**: 動態反射
+- [x] **Dynamic Reflection**: 動態反射（Mirror.js）
 - [ ] **Bump Mapping**: 不選
 
 ### ⚠️ 技術限制
@@ -133,7 +139,7 @@ D:.
 - [x] **球體統一半徑**: 20單位 (所有球都相同大小)
 - [x] **砲管仰角範圍**: -10°到+45°
 - [x] **砲彈發射速度**: 30單位/秒 (60fps)
-- [x] **坦克移動速度**: 適中速度 (待實作時調整)
+- [x] **坦克移動速度**: 適中速度
 - [x] **重力加速度**: 9.8單位/秒²
 
 ### ✅ 遊戲機制
@@ -141,15 +147,13 @@ D:.
 - [x] **目標生成機制**: 隨機位置，被擊中後10秒重生
 - [x] **遊戲結束條件**: 無限制遊戲
 - [x] **重新開始機制**: 按R鍵重置
-- [x] **計分顯示**: 畫面正中間上方記分板
 - [x] **碰撞效果**: 無爆炸效果或音效
 - [x] **坦克邊界**: 撞牆停止，無模型碰撞
 
-### ✅ 碰撞與計分系統
+### ✅ 碰撞與物理系統
 - [x] **統一球體大小**: 白球、藍球、紅球半徑都設為20單位
 - [x] **運動速率調整**: 目標球旋轉/移動速度減半
 - [x] **距離碰撞檢測**: 砲彈中心與球體中心距離 < (砲彈半徑 + 球體半徑)
-- [x] **命中獎勵**: 白球+1彈藥，藍球+2彈藥，紅球+3彈藥
 - [x] **目標移除**: 被命中的目標球和砲彈同時銷毀
 
 ### ✅ 技術實現
@@ -163,7 +167,7 @@ D:.
 ## 新增功能需求
 
 ### 🔴 必須新增的功能
-- [ ] **Cube Map反射/折射**: 至少1個物體實現反射或折射效果
+- [ ] **Cube Map反射/折射**: 至少1個物體實現反射或折射效果（Mirror.js）
 - [ ] **介紹文字**: 網頁底部添加專題說明
 
 ### 🟢 已完成功能
@@ -171,3 +175,5 @@ D:.
 - [x] **紋理映射**: 地面加載ground.jpg紋理圖片
 - [x] **環境Cube Map**: 天空盒背景
 - [x] **場景地面**: 使用ground.jpg紋理的地面平面
+- [x] **基本射擊系統**: 砲彈發射與碰撞檢測
+- [x] **目標系統**: 三種顏色的目標球

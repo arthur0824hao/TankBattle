@@ -100,7 +100,42 @@ class TextureManager {
         
         return texture;
     }
+
+    // 創建動態 Cube Map（用於即時反射）
+    createDynamicCubeMap(size = 512) {
+        const texture = this.gl.createTexture();
+        this.gl.bindTexture(this.gl.TEXTURE_CUBE_MAP, texture);
+        
+        const faces = [
+            this.gl.TEXTURE_CUBE_MAP_POSITIVE_X,
+            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
+            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
+            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
+            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
+            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
+        ];
+        
+        // 為每個面創建空紋理
+        faces.forEach(face => {
+            this.gl.texImage2D(face, 0, this.gl.RGBA, size, size, 0,
+                              this.gl.RGBA, this.gl.UNSIGNED_BYTE, null);
+        });
+        
+        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
+        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_R, this.gl.CLAMP_TO_EDGE);
+        
+        return texture;
+    }
     
+    // 更新動態 Cube Map 的某一面
+    updateCubeMapFace(cubeMapTexture, face, imageData, size) {
+        this.gl.bindTexture(this.gl.TEXTURE_CUBE_MAP, cubeMapTexture);
+        this.gl.texSubImage2D(face, 0, 0, 0, size, size, this.gl.RGBA, this.gl.UNSIGNED_BYTE, imageData);
+    }
+
     // 載入 2D 紋理
     async loadTexture(name, url, options = {}) {
         if (this.textures.has(name)) {

@@ -304,11 +304,4 @@ class Camera {
                clipPos[2] >= -1 && clipPos[2] <= 1;
     }
     
-    // 平滑攝影機移動（未來可用於轉換動畫）
-    smoothTransition(targetPos, targetTarget, duration = 1.0) {
-        // 這裡可以實現平滑過渡動畫
-        // 目前直接設定位置
-        this.position = [...targetPos];
-        this.target = [...targetTarget];
-    }
 }

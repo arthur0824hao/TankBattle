@@ -1,216 +1,139 @@
 /**
  * 遊戲管理器
- * 統一管理遊戲狀態、計分和遊戲邏輯
+ * 負責管理遊戲狀態和生命週期（移除彈藥和計分系統）
  */
 class GameManager {
     constructor() {
         // 遊戲狀態
-        this.gameState = 'playing'; // 'playing', 'paused', 'gameOver'
+        this.gameState = 'initializing'; // 'initializing', 'playing', 'paused', 'gameover'
         
-        // 計分系統
-        this.score = {
-            total: 0,
-            white: 0,
-            blue: 0,
-            red: 0
-        };
+        // 砲彈限制（保留同時存在限制，移除總彈藥限制）
+        this.maxSimultaneousBullets = 5; // 場上最多同時存在5顆砲彈
         
-        // 統計資料
-        this.stats = {
-            totalShots: 0,
-            totalHits: 0,
-            accuracy: 0,
-            gameTime: 0,
-            targetHits: {
-                white: 0,
-                blue: 0,
-                red: 0
-            }
-        };
-        
-        // 遊戲設定
-        this.settings = {
-            enableShadows: true,
-            enableReflections: true,
-            enableParticles: true,
-            soundEnabled: true
-        };
-        
-        // UI 元素引用
-        this.uiElements = {};
-        this.initUIElements();
+        // 遊戲時間
+        this.gameTime = 0;
+        this.deltaTime = 0;
         
         // 事件回調
-        this.onScoreUpdate = null;
-        this.onGameStateChange = null;
-        this.onTargetHit = null;
-    }
-    
-    // 初始化 UI 元素
-    initUIElements() {
-        this.uiElements = {
-            totalScore: document.getElementById('totalScore'),
-            whiteScore: document.getElementById('whiteScore'),
-            blueScore: document.getElementById('blueScore'),
-            redScore: document.getElementById('redScore'),
-            viewIndicator: document.getElementById('viewIndicator')
+        this.callbacks = {
+            onGameStateChange: null,
+            onTargetHit: null
         };
+        
+        // 除錯資料來源
+        this.debugSources = {};
+        
+        console.log('GameManager initialized (no ammo/scoring system)');
     }
     
-    // 更新遊戲
+    // 設定回調函數
+    setCallbacks(callbacks) {
+        this.callbacks = { ...this.callbacks, ...callbacks };
+    }
+    
+    // 設定除錯資料來源
+    setDebugSources(sources) {
+        this.debugSources = sources;
+    }
+    
+    // 更新遊戲管理器
     update(deltaTime) {
-        if (this.gameState !== 'playing') return;
+        this.deltaTime = deltaTime;
         
-        this.stats.gameTime += deltaTime;
-        this.updateAccuracy();
+        if (this.gameState === 'playing') {
+            this.gameTime += deltaTime;
+        }
     }
     
-    // 處理射擊事件
+    // 檢查是否可以發射（只檢查場上砲彈數量）
+    canFire(currentBulletCount) {
+        return currentBulletCount < this.maxSimultaneousBullets && this.gameState === 'playing';
+    }
+    
+    // 處理砲彈發射
     onBulletFired() {
-        this.stats.totalShots++;
-        console.log(`Shot fired. Total shots: ${this.stats.totalShots}`);
+        console.log('Bullet fired (unlimited ammo)');
+        return true; // 總是允許發射（除非超過同時存在限制）
     }
     
-    // 處理目標擊中事件
+    // 處理目標被擊中（移除計分，只處理銷毀）
     onTargetHit(hitData) {
-        const { target, score, type, position } = hitData;
+        console.log('Target hit (no scoring):', hitData);
         
-        // 更新分數
-        this.score.total += score;
-        this.score[type] += score;
-        
-        // 更新統計
-        this.stats.totalHits++;
-        this.stats.targetHits[type]++;
-        
-        // 更新 UI
-        this.updateScoreDisplay();
-        
-        // 顯示擊中效果
-        this.showHitEffect(position, score, type);
-        
-        // 觸發回調
-        if (this.onTargetHit) {
-            this.onTargetHit(hitData);
-        }
-        
-        console.log(`${type} target hit! Score: +${score}, Total: ${this.score.total}`);
-    }
-    
-    // 更新準確度
-    updateAccuracy() {
-        this.stats.accuracy = this.stats.totalShots > 0 ? 
-            (this.stats.totalHits / this.stats.totalShots * 100) : 0;
-    }
-    
-    // 更新分數顯示
-    updateScoreDisplay() {
-        if (this.uiElements.totalScore) {
-            this.uiElements.totalScore.textContent = this.score.total;
-        }
-        if (this.uiElements.whiteScore) {
-            this.uiElements.whiteScore.textContent = this.score.white;
-        }
-        if (this.uiElements.blueScore) {
-            this.uiElements.blueScore.textContent = this.score.blue;
-        }
-        if (this.uiElements.redScore) {
-            this.uiElements.redScore.textContent = this.score.red;
-        }
-        
-        // 觸發分數更新回調
-        if (this.onScoreUpdate) {
-            this.onScoreUpdate(this.score);
+        // 觸發目標擊中回調（用於顯示訊息等）
+        if (this.callbacks.onTargetHit) {
+            this.callbacks.onTargetHit(hitData);
         }
     }
     
-    // 更新視角指示器
-    updateViewIndicator(viewMode) {
-        if (this.uiElements.viewIndicator) {
-            const indicator = this.uiElements.viewIndicator;
-            indicator.textContent = viewMode === 'first' ? '第一人稱' : '第三人稱';
-            indicator.className = viewMode === 'first' ? '' : 'third-person';
-        }
-    }
-    
-    // 顯示擊中效果
-    showHitEffect(position, score, type) {
-        // 創建臨時訊息元素
-        const message = document.createElement('div');
-        message.className = 'game-message';
-        message.textContent = `+${score}分`;
-        
-        // 設定顏色
-        switch (type) {
-            case 'white':
-                message.style.color = '#ffffff';
-                message.style.borderColor = '#ffffff';
-                break;
-            case 'blue':
-                message.style.color = '#3498db';
-                message.style.borderColor = '#3498db';
-                break;
-            case 'red':
-                message.style.color = '#e74c3c';
-                message.style.borderColor = '#e74c3c';
-                break;
-        }
-        
-        document.getElementById('gameContainer').appendChild(message);
-        
-        // 2秒後移除
-        setTimeout(() => {
-            if (message.parentNode) {
-                message.parentNode.removeChild(message);
-            }
-        }, 2000);
+    // 獲取最大同時砲彈數
+    getMaxSimultaneousBullets() {
+        return this.maxSimultaneousBullets;
     }
     
     // 重置遊戲
     resetGame() {
-        // 重置分數
-        this.score = {
-            total: 0,
-            white: 0,
-            blue: 0,
-            red: 0
-        };
+        console.log('Resetting game...');
         
-        // 重置統計
-        this.stats = {
-            totalShots: 0,
-            totalHits: 0,
-            accuracy: 0,
-            gameTime: 0,
-            targetHits: {
-                white: 0,
-                blue: 0,
-                red: 0
-            }
-        };
-        
-        // 更新 UI
-        this.updateScoreDisplay();
-        
-        // 設定遊戲狀態
+        // 重置遊戲狀態
         this.gameState = 'playing';
+        this.gameTime = 0;
         
-        console.log('Game reset');
+        // 觸發狀態改變回調
+        if (this.callbacks.onGameStateChange) {
+            this.callbacks.onGameStateChange(this.gameState);
+        }
+        
+        console.log('Game reset complete (no ammo/scoring to reset)');
     }
     
-    // 暫停/恢復遊戲
-    togglePause() {
+    // 開始遊戲
+    startGame() {
+        this.gameState = 'playing';
+        this.gameTime = 0;
+        
+        if (this.callbacks.onGameStateChange) {
+            this.callbacks.onGameStateChange(this.gameState);
+        }
+        
+        console.log('Game started');
+    }
+    
+    // 暫停遊戲
+    pauseGame() {
         if (this.gameState === 'playing') {
             this.gameState = 'paused';
-        } else if (this.gameState === 'paused') {
+            
+            if (this.callbacks.onGameStateChange) {
+                this.callbacks.onGameStateChange(this.gameState);
+            }
+            
+            console.log('Game paused');
+        }
+    }
+    
+    // 恢復遊戲
+    resumeGame() {
+        if (this.gameState === 'paused') {
             this.gameState = 'playing';
+            
+            if (this.callbacks.onGameStateChange) {
+                this.callbacks.onGameStateChange(this.gameState);
+            }
+            
+            console.log('Game resumed');
+        }
+    }
+    
+    // 結束遊戲
+    endGame() {
+        this.gameState = 'gameover';
+        
+        if (this.callbacks.onGameStateChange) {
+            this.callbacks.onGameStateChange(this.gameState);
         }
         
-        if (this.onGameStateChange) {
-            this.onGameStateChange(this.gameState);
-        }
-        
-        console.log(`Game ${this.gameState}`);
+        console.log('Game ended');
     }
     
     // 獲取遊戲狀態
@@ -218,116 +141,79 @@ class GameManager {
         return this.gameState;
     }
     
-    // 獲取分數
-    getScore() {
-        return { ...this.score };
+    // 獲取遊戲時間
+    getGameTime() {
+        return this.gameTime;
     }
     
-    // 獲取統計資料
-    getStats() {
-        return { ...this.stats };
-    }
-    
-    // 獲取格式化的遊戲時間
-    getFormattedGameTime() {
-        const minutes = Math.floor(this.stats.gameTime / 60);
-        const seconds = Math.floor(this.stats.gameTime % 60);
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    }
-    
-    // 獲取遊戲總結
+    // 獲取遊戲摘要
     getGameSummary() {
         return {
-            score: this.score,
-            stats: this.stats,
-            accuracy: this.stats.accuracy.toFixed(1),
-            gameTime: this.getFormattedGameTime(),
-            averageScore: this.stats.totalHits > 0 ? 
-                (this.score.total / this.stats.totalHits).toFixed(1) : 0
+            state: this.gameState,
+            time: this.gameTime,
+            maxBullets: this.maxSimultaneousBullets
         };
     }
     
-    // 檢查成就
-    checkAchievements() {
-        const achievements = [];
+    // 強制除錯輸出
+    forceDebugOutput() {
+        console.log('=== GAME MANAGER DEBUG OUTPUT ===');
+        console.log('Game State:', this.gameState);
+        console.log('Game Time:', this.gameTime.toFixed(2), 'seconds');
+        console.log('Max Simultaneous Bullets:', this.maxSimultaneousBullets);
         
-        // 準確度成就
-        if (this.stats.accuracy >= 80 && this.stats.totalShots >= 10) {
-            achievements.push({ name: '神射手', description: '準確度達到80%以上' });
-        }
+        // 輸出除錯來源資料
+        Object.entries(this.debugSources).forEach(([name, source]) => {
+            if (source && typeof source.getStats === 'function') {
+                console.log(`${name} stats:`, source.getStats());
+            } else if (source && typeof source.getDebugInfo === 'function') {
+                console.log(`${name} debug:`, source.getDebugInfo());
+            }
+        });
         
-        // 分數成就
-        if (this.score.total >= 100) {
-            achievements.push({ name: '百分突破', description: '總分達到100分' });
-        }
-        
-        // 紅球成就
-        if (this.stats.targetHits.red >= 5) {
-            achievements.push({ name: '紅球獵人', description: '擊中5個紅球' });
-        }
-        
-        // 連續擊中成就（需要額外追蹤）
-        // 這裡可以擴展更多成就邏輯
-        
-        return achievements;
+        console.log('=== END DEBUG OUTPUT ===');
     }
     
-    // 保存遊戲資料（未來可用於本地存儲）
-    saveGameData() {
-        const gameData = {
-            score: this.score,
-            stats: this.stats,
-            settings: this.settings,
-            timestamp: Date.now()
+    // 檢查遊戲是否運行中
+    isPlaying() {
+        return this.gameState === 'playing';
+    }
+    
+    // 檢查遊戲是否暫停
+    isPaused() {
+        return this.gameState === 'paused';
+    }
+    
+    // 檢查遊戲是否結束
+    isGameOver() {
+        return this.gameState === 'gameover';
+    }
+    
+    // 設定遊戲配置
+    setGameConfig(config) {
+        if (config.maxSimultaneousBullets) {
+            this.maxSimultaneousBullets = config.maxSimultaneousBullets;
+        }
+        
+        console.log('Game config updated:', config);
+    }
+    
+    // 獲取遊戲配置
+    getGameConfig() {
+        return {
+            maxSimultaneousBullets: this.maxSimultaneousBullets
+        };
+    }
+    
+    // 清理資源
+    cleanup() {
+        this.callbacks = {
+            onGameStateChange: null,
+            onTargetHit: null
         };
         
-        try {
-            // 這裡可以實現本地存儲
-            console.log('Game data saved:', gameData);
-            return true;
-        } catch (error) {
-            console.error('Failed to save game data:', error);
-            return false;
-        }
-    }
-    
-    // 載入遊戲資料
-    loadGameData() {
-        try {
-            // 這裡可以實現從本地存儲載入
-            console.log('Loading game data...');
-            return true;
-        } catch (error) {
-            console.error('Failed to load game data:', error);
-            return false;
-        }
-    }
-    
-    // 設定回調函數
-    setCallbacks(callbacks) {
-        this.onScoreUpdate = callbacks.onScoreUpdate || null;
-        this.onGameStateChange = callbacks.onGameStateChange || null;
-        this.onTargetHit = callbacks.onTargetHit || null;
-    }
-    
-    // 獲取設定
-    getSettings() {
-        return { ...this.settings };
-    }
-    
-    // 更新設定
-    updateSettings(newSettings) {
-        this.settings = { ...this.settings, ...newSettings };
-    }
-    
-    // 獲取最高分統計
-    getHighScore() {
-        // 這裡可以實現最高分記錄
-        return this.score.total;
-    }
-    
-    // 檢查是否創造新記錄
-    isNewRecord() {
-        return this.score.total > this.getHighScore();
+        this.debugSources = {};
+        
+        console.log('GameManager cleaned up');
     }
 }

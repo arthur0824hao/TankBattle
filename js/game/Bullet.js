@@ -16,7 +16,7 @@ class Bullet {
         this.active = true;
         
         // 生命週期
-        this.maxLifeTime = 10.0; // 最大飛行時間（秒）
+        this.maxLifeTime = 5.0; // 最大飛行時間（秒）
         this.lifeTime = 0;
         
         // 場景邊界

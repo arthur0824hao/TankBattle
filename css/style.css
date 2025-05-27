@@ -1,4 +1,4 @@
-/* 坦克大戰遊戲樣式表 */
+/* 坦克大戰遊戲樣式表 - 移除計分相關樣式 */
 
 * {
     margin: 0;
@@ -40,51 +40,6 @@ body {
     z-index: 10;
 }
 
-/* 計分板 */
-#scoreboard {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 15px 25px;
-    border-radius: 10px;
-    border: 2px solid #f39c12;
-    font-size: 18px;
-    text-align: center;
-    pointer-events: auto;
-}
-
-.score-item {
-    margin-bottom: 10px;
-}
-
-.score-label {
-    font-weight: bold;
-    color: #f39c12;
-}
-
-#totalScore {
-    font-size: 24px;
-    font-weight: bold;
-    color: #e74c3c;
-    margin-left: 10px;
-}
-
-.score-detail {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-    font-size: 14px;
-    color: #ecf0f1;
-}
-
-.score-detail span {
-    padding: 2px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
-}
-
 /* 控制說明 */
 #controls {
     position: absolute;
@@ -105,6 +60,10 @@ body {
     text-align: center;
     border-bottom: 1px solid #3498db;
     padding-bottom: 5px;
+}
+
+.control-section {
+    margin-bottom: 10px;
 }
 
 .control-item {
@@ -137,6 +96,21 @@ body {
 #viewIndicator.third-person {
     color: #e74c3c;
     border-color: #e74c3c;
+}
+
+/* 彈藥顯示（可選） */
+#ammoDisplay {
+    position: absolute;
+    bottom: 80px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: 2px solid #f39c12;
+    font-size: 16px;
+    font-weight: bold;
+    color: #f39c12;
+    pointer-events: none;
 }
 
 /* 專題介紹 */
@@ -228,18 +202,13 @@ body {
     text-align: center;
     z-index: 100;
     animation: fadeInOut 2s ease-in-out;
+    pointer-events: none;
 }
 
 .message-info { border-color: #3498db; color: #3498db; }
 .message-success { border-color: #2ecc71; color: #2ecc71; }
 .message-warning { border-color: #f39c12; color: #f39c12; }
 .message-error { border-color: #e74c3c; color: #e74c3c; }
-.message-score { border-color: #f39c12; color: #f39c12; animation: pulse 0.5s ease-in-out; }
-
-@keyframes fadeInOut {
-    0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-    50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-}
 
 @keyframes fadeInOut {
     0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
@@ -299,20 +268,6 @@ body {
 }
 
 @media (max-width: 768px) {
-    #scoreboard {
-        font-size: 16px;
-        padding: 10px 15px;
-    }
-    
-    #totalScore {
-        font-size: 20px;
-    }
-    
-    .score-detail {
-        font-size: 12px;
-        gap: 10px;
-    }
-    
     #projectInfo {
         margin: 20px;
         padding: 20px;
@@ -323,6 +278,15 @@ body {
     }
     
     #projectInfo p, #projectInfo li {
+        font-size: 14px;
+    }
+    
+    #controls {
+        font-size: 12px;
+        min-width: 180px;
+    }
+    
+    #viewIndicator {
         font-size: 14px;
     }
 }

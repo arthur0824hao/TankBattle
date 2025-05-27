@@ -11,38 +11,49 @@ class ShaderManager {
         this.currentProgram = null;
     }
     
-    // 初始化所有著色器
+    // 初始化所有著色器（修改為非同步）
     async initAllShaders() {
-        try {
-            // 載入Phong光照著色器
-            await this.loadShaderProgram('phong', 'shaders/phong.vert', 'shaders/phong.frag');
-            
-            // 載入天空盒著色器
-            await this.loadShaderProgram('skybox', 'shaders/skybox.vert', 'shaders/skybox.frag');
-            
-            console.log('All shaders loaded successfully');
-            return true;
-        } catch (error) {
-            console.error('Failed to load shaders:', error);
-            return false;
-        }
+        console.log('Initializing all shaders...');
+        
+        const shaders = [
+            { name: 'phong', vertex: 'phong.vert', fragment: 'phong.frag' },
+            { name: 'skybox', vertex: 'skybox.vert', fragment: 'skybox.frag' },
+            { name: 'reflection', vertex: 'reflection.vert', fragment: 'reflection.frag' }
+        ];
+        
+        let successCount = 0;
+        
+        // 使用 Promise.all 確保所有著色器都載入完成
+        const results = await Promise.allSettled(
+            shaders.map(shader => this.loadShaderProgram(shader.name, shader.vertex, shader.fragment))
+        );
+        
+        results.forEach((result, index) => {
+            const shader = shaders[index];
+            if (result.status === 'fulfilled') {
+                successCount++;
+                console.log(`✓ Shader '${shader.name}' loaded successfully`);
+            } else {
+                console.error(`✗ Failed to load shader '${shader.name}':`, result.reason);
+            }
+        });
+        
+        console.log(`Shader initialization complete: ${successCount}/${shaders.length} loaded`);
+        
+        return this.programs.has('phong');
     }
     
     // 載入著色器程式
     async loadShaderProgram(name, vertexShaderPath, fragmentShaderPath) {
         try {
-            // 載入著色器源碼
-            const vertexSource = await this.loadShaderSource(vertexShaderPath);
-            const fragmentSource = await this.loadShaderSource(fragmentShaderPath);
+            const vertexSource = await this.loadShaderSource('shaders/' + vertexShaderPath);
+            const fragmentSource = await this.loadShaderSource('shaders/' + fragmentShaderPath);
             
-            // 編譯著色器
             const vertexShader = this.compileShader(vertexSource, this.gl.VERTEX_SHADER);
             const fragmentShader = this.compileShader(fragmentSource, this.gl.FRAGMENT_SHADER);
             
-            // 鏈接程式
             const program = this.linkProgram(vertexShader, fragmentShader);
             
-            // 儲存程式
             this.programs.set(name, program);
             
             console.log(`Shader program '${name}' loaded successfully`);
@@ -62,7 +73,6 @@ class ShaderManager {
         try {
             const response = await fetch(path);
             if (!response.ok) {
-                // 如果載入失敗，使用內建著色器
                 return this.getBuiltinShaderSource(path);
             }
             const source = await response.text();
@@ -156,13 +166,8 @@ uniform mat4 uProjectionMatrix;
 varying vec3 vTexCoord;
 
 void main() {
-    // 使用位置作為紋理座標方向向量
     vTexCoord = aPosition;
-    
-    // 計算位置，確保天空盒總是在遠處
     vec4 pos = uProjectionMatrix * uViewMatrix * vec4(aPosition, 1.0);
-    
-    // 設定 z = w，讓深度值總是 1.0（最遠）
     gl_Position = pos.xyww;
 }
             `;
@@ -175,6 +180,42 @@ uniform samplerCube uSkybox;
 
 void main() {
     gl_FragColor = textureCube(uSkybox, vTexCoord);
+}
+            `;
+        } else if (path.includes('reflection.vert')) {
+            return `
+attribute vec4 aPosition;
+attribute vec4 aNormal;
+
+uniform mat4 uMvpMatrix;
+uniform mat4 uModelMatrix;
+uniform mat4 uNormalMatrix;
+
+varying vec3 vNormal;
+varying vec3 vPositionInWorld;
+
+void main(){
+    gl_Position = uMvpMatrix * aPosition;
+    vPositionInWorld = (uModelMatrix * aPosition).xyz; 
+    vNormal = normalize(vec3(uNormalMatrix * aNormal));
+}
+            `;
+        } else if (path.includes('reflection.frag')) {
+            return `
+precision mediump float;
+
+uniform vec3 uViewPosition;
+uniform vec3 uColor;
+uniform samplerCube uEnvironmentMap;
+
+varying vec3 vNormal;
+varying vec3 vPositionInWorld;
+
+void main() {
+    vec3 V = normalize(uViewPosition - vPositionInWorld); 
+    vec3 normal = normalize(vNormal);
+    vec3 R = reflect(-V, normal);
+    gl_FragColor = vec4(0.78 * textureCube(uEnvironmentMap, R).rgb + 0.3 * uColor, 1.0);
 }
             `;
         }
@@ -210,7 +251,6 @@ void main() {
             throw new Error(`Program linking error: ${error}`);
         }
         
-        // 清理著色器
         this.gl.deleteShader(vertexShader);
         this.gl.deleteShader(fragmentShader);
         

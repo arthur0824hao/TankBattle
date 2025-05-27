@@ -39,7 +39,7 @@ class TankBattleGame {
             
             // 初始化核心系統
             this.initWebGL();
-            this.initShaders();
+            await this.initShaders(); // 添加 await
             this.initCamera();
             this.initInput();
             this.initGameManager();
@@ -75,13 +75,21 @@ class TankBattleGame {
         this.webglCore.resizeCanvas(rect.width, rect.height);
     }
     
-    // 初始化著色器
-    initShaders() {
+    // 初始化著色器（修改為非同步）
+    async initShaders() {
         this.shaderManager = new ShaderManager(this.webglCore);
         
-        if (!this.shaderManager.initAllShaders()) {
-            throw new Error('Failed to initialize shaders');
+        // 等待著色器載入完成
+        const result = await this.shaderManager.initAllShaders();
+        console.log('Shader initialization result:', result);
+        
+        // 檢查是否至少有 phong 著色器
+        if (!this.shaderManager.hasProgram('phong')) {
+            throw new Error('Critical shader (phong) failed to load');
         }
+        
+        console.log('Basic shaders loaded successfully');
+        return true;
     }
     
     // 初始化攝影機
@@ -102,18 +110,24 @@ class TankBattleGame {
     initGameManager() {
         this.gameManager = new GameManager();
         
+        // 確保遊戲立即開始
+        this.gameManager.startGame();
+        console.log('GameManager initialized and started');
+        
         // 設定回調
         this.gameManager.setCallbacks({
-            onScoreUpdate: (score) => {
-                console.log('Score updated:', score);
-            },
             onGameStateChange: (state) => {
                 console.log('Game state changed:', state);
             },
             onTargetHit: (hitData) => {
                 console.log('Target hit:', hitData);
+                if (this.ui) {
+                    this.ui.showTargetHitMessage(hitData.targetType);
+                }
             }
         });
+        
+        this.initLighting();
     }
     
     // 初始化光照
@@ -133,6 +147,10 @@ class TankBattleGame {
         // 創建坦克
         this.tank = new Tank(this.webglCore, this.shaderManager);
         
+        // 創建鏡面球（傳入 frameBuffer）
+        this.mirror = new Mirror(this.webglCore, this.shaderManager, this.frameBuffer);
+        this.mirror.setFollowTarget(this.tank);
+        
         // 設定攝影機跟隨坦克
         this.camera.setFollowTarget(this.tank);
         
@@ -142,7 +160,7 @@ class TankBattleGame {
         // 創建目標管理器
         this.targetManager = new TargetManager(this.webglCore, this.shaderManager);
         
-        console.log('Game objects created');
+        console.log('Game objects created, including Mirror sphere with dynamic reflection');
     }
     
     // 初始化渲染系統
@@ -177,24 +195,22 @@ class TankBattleGame {
     
     // 載入遊戲紋理
     async loadGameTextures() {
-        console.log('Loading game textures...');
+        console.log('=== LOADING TEXTURES ===');
         
-        // 定義要載入的紋理
+        // 定義要載入的紋理（修正路徑）
         const texturesToLoad = [
             // 坦克紋理
             { name: 'tankBase', url: 'assets/textures/tank_base.jpg', type: 'texture' },
             { name: 'tankTurret', url: 'assets/textures/tank_turret.jpg', type: 'texture' },
             { name: 'tankBarrel', url: 'assets/textures/tank_barrel.jpg', type: 'texture' },
             
-            // 環境紋理
+            // 環境紋理（修正路徑）
             { name: 'ground', url: 'assets/textures/ground.jpg', type: 'texture' },
             { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' },
-            
-            // 目標紋理
             { name: 'target_texture', url: 'assets/textures/target_texture.jpg', type: 'texture' }
         ];
         
-        // 天空盒紋理（單獨處理）
+        // 天空盒紋理（確認路徑）
         const skyboxUrls = {
             px: 'assets/textures/skybox/px.jpg', // +X (右)
             nx: 'assets/textures/skybox/nx.jpg', // -X (左)
@@ -206,13 +222,26 @@ class TankBattleGame {
         
         try {
             // 載入一般紋理
+            console.log('Loading individual textures...');
             const textureResults = await Promise.allSettled(
-                texturesToLoad.map(texture => 
-                    this.textureManager.loadTexture(texture.name, texture.url)
-                )
+                texturesToLoad.map(texture => {
+                    console.log(`Loading texture: ${texture.name} from ${texture.url}`);
+                    return this.textureManager.loadTexture(texture.name, texture.url);
+                })
             );
             
+            // 檢查每個紋理載入結果
+            textureResults.forEach((result, index) => {
+                const texture = texturesToLoad[index];
+                if (result.status === 'fulfilled') {
+                    console.log(`✓ ${texture.name} loaded successfully`);
+                } else {
+                    console.error(`✗ ${texture.name} failed:`, result.reason);
+                }
+            });
+            
             // 載入天空盒 cube map
+            console.log('Loading skybox cube map...');
             const skyboxResult = await this.textureManager.loadCubeMap('skybox', skyboxUrls);
             
             // 檢查載入結果
@@ -221,19 +250,21 @@ class TankBattleGame {
             
             console.log(`Texture loading completed: ${successful} loaded, ${failed} failed`);
             console.log('Skybox cube map loaded:', !!skyboxResult);
+            console.log('Ground texture loaded:', this.textureManager.isTextureLoaded('ground'));
+            
+            // 顯示所有載入的紋理
+            console.log('Loaded textures:', Array.from(this.textureManager.textures.keys()));
             
             // 為失敗的紋理創建程序化替代品
             if (failed > 0) {
+                console.warn('Some textures failed to load, creating fallbacks...');
                 this.createFallbackTextures();
             }
             
-            // 顯示記憶體使用情況
-            const memStats = this.textureManager.getStats();
-            console.log(`Texture memory usage: textures=${memStats.textures}, cubeMaps=${memStats.cubeMaps}`);
+            console.log('=== TEXTURE LOADING COMPLETE ===');
             
         } catch (error) {
             console.error('Error loading textures:', error);
-            // 使用程序化紋理作為後備
             this.createFallbackTextures();
         }
     }
@@ -309,7 +340,6 @@ class TankBattleGame {
     
     // 處理輸入
     handleInput() {
-        // 檢查 InputHandler 是否存在
         if (!this.inputHandler) {
             console.error('InputHandler is null in handleInput!');
             return;
@@ -318,38 +348,17 @@ class TankBattleGame {
         const movement = this.inputHandler.getMovementInput();
         const actions = this.inputHandler.getActionInput();
         
-        // 除錯：顯示當前輸入狀態 - 減少頻率
-        if (this.inputHandler.keyJustPressed.size > 0) {
-            console.log('=== HANDLE INPUT DEBUG ===');
-            console.log('keyJustPressed size:', this.inputHandler.keyJustPressed.size);
-            console.log('keyJustPressed contents:', Array.from(this.inputHandler.keyJustPressed));
-            console.log('actions object:', actions);
-        }
-        
         // P鍵視角切換處理
         if (actions.toggleView) {
-            console.log('=== HANDLE INPUT: P KEY DETECTED ===');
-            console.log('Camera exists:', !!this.camera);
-            
             if (this.camera) {
-                // 切換模式並重新載入
                 const newMode = this.camera.toggleViewMode();
-                console.log('Camera toggled to:', newMode);
-                
-                // 強制再次重新載入以確保位置正確
                 this.camera.reloadCameraPosition();
-                console.log('Camera position reloaded');
                 
-                // 更新UI
                 if (this.ui) {
                     this.ui.updateViewIndicator(newMode);
-                    console.log('UI updated');
                 }
                 
                 this.showViewModeMessage(newMode);
-                console.log('View mode message shown');
-            } else {
-                console.error('Camera not initialized!');
             }
         }
         
@@ -362,28 +371,34 @@ class TankBattleGame {
             }
         }
         
-        // 射擊
+        // 射擊 - 移除過度debug，確保狀態檢查正確
         if (actions.fire) {
-            console.log('=== FIRE ACTION ===');
-            if (this.tank && this.bulletManager) {
-                const firePos = this.tank.getFirePosition();
-                const fireDir = this.tank.getFireDirection();
-                this.bulletManager.fire(firePos, fireDir);
-                this.gameManager.onBulletFired();
+            if (this.tank && this.bulletManager && this.gameManager) {
+                const currentBulletCount = this.bulletManager.getActiveBulletCount();
+                
+                if (this.gameManager.canFire(currentBulletCount)) {
+                    const firePos = this.tank.getFirePosition();
+                    const fireDir = this.tank.getFireDirection();
+                    
+                    const fired = this.bulletManager.fire(firePos, fireDir);
+                    if (fired) {
+                        this.gameManager.onBulletFired();
+                        console.log('Bullet fired successfully!');
+                    }
+                } else {
+                    console.log('Cannot fire: max bullets reached or game not playing');
+                }
             }
         }
         
         // 重置遊戲
         if (actions.reset) {
-            console.log('=== RESET ACTION ===');
             this.resetGame();
         }
     }
     
     // 更新遊戲邏輯
     update() {
-        // *** 重要：先處理輸入，再更新輸入處理器 ***
-        
         // 處理輸入 - 在 inputHandler.update() 之前
         this.handleInput();
         
@@ -395,6 +410,11 @@ class TankBattleGame {
         
         // 更新攝影機
         this.camera.update();
+        
+        // 更新鏡面球
+        if (this.mirror) {
+            this.mirror.update(this.deltaTime);
+        }
         
         // 更新砲彈
         this.bulletManager.update(this.deltaTime);
@@ -408,14 +428,12 @@ class TankBattleGame {
         // 更新遊戲管理器
         this.gameManager.update(this.deltaTime);
         
-        // 更新UI
-        if (this.ui) {
-            this.ui.updateScore(this.gameManager.getScore());
-        }
-        
         // 添加陰影投射物件（如果尚未添加）
         if (this.shadowRenderer && this.shadowRenderer.shadowCasters.length === 0) {
             this.shadowRenderer.addShadowCaster(this.tank);
+            if (this.mirror) {
+                this.shadowRenderer.addShadowCaster(this.mirror);
+            }
             this.targetManager.getTargets().forEach(target => {
                 this.shadowRenderer.addShadowCaster(target);
             });
@@ -434,7 +452,7 @@ class TankBattleGame {
     
     // 渲染場景
     render() {
-        // 清除畫面
+        // 清除主畫面
         this.webglCore.clear();
         
         // 獲取光照資訊
@@ -443,23 +461,62 @@ class TankBattleGame {
             color: this.lighting.getMainLight().color
         };
         
-        // 渲染場景環境（包含天空盒）
+        // 獲取坦克位置
+        const tankPosition = this.tank ? this.tank.getPosition() : null;
+        
+        // 渲染場景環境
         if (this.scene) {
-            this.scene.render(this.camera, lightData);
+            this.scene.render(this.camera, this.lighting, tankPosition);
         }
         
         // 渲染坦克
         this.tank.render(this.camera, lightData, this.textureManager);
         
+        // 渲染鏡面球（帶動態反射）
+        if (this.mirror) {
+            this.mirror.render(this.camera, lightData, this.textureManager, (cubeCamera) => {
+                // 為 Cube Map 渲染場景（不包含鏡面球本身）
+                this.renderSceneForCubeMap(cubeCamera);
+            });
+        }
+        
         // 渲染砲彈
         this.bulletManager.render(this.camera, lightData, this.textureManager);
         
         // 渲染目標
-        this.targetManager.render(this.camera, lightData, this.textureManager);
+        this.targetManager.render(this.camera, this.lighting, this.textureManager);
         
-        // 檢查 WebGL 錯誤（只在開發模式）
+        // 檢查 WebGL 錯誤
         if (window.DEBUG) {
             this.webglCore.checkError('render');
+        }
+    }
+    
+    // 為 Cube Map 渲染場景（使用範例的方法）
+    renderSceneForCubeMap(cubeCamera, vpMatrix) {
+        // 使用傳入的 vpMatrix 而不是分別的矩陣
+        const program = this.shaderManager.useProgram('phong');
+        if (!program) return;
+        
+        // 渲染場景環境
+        if (this.scene) {
+            const tankPosition = this.tank ? this.tank.getPosition() : null;
+            this.scene.renderForCubeMap(vpMatrix, this.lighting, tankPosition, program);
+        }
+        
+        // 渲染坦克
+        if (this.tank) {
+            this.tank.renderForCubeMap(vpMatrix, this.lighting, program);
+        }
+        
+        // 渲染砲彈
+        if (this.bulletManager) {
+            this.bulletManager.renderForCubeMap(vpMatrix, this.lighting, program);
+        }
+        
+        // 渲染目標
+        if (this.targetManager) {
+            this.targetManager.renderForCubeMap(vpMatrix, this.lighting, program);
         }
     }
     

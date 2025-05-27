@@ -50,12 +50,66 @@ class Scene {
     
     // 創建場景幾何體
     createGeometry() {
+        this.createGroundPlane(); // 新增地面平面
         this.createFloor();
         this.createWalls();
         this.createCeiling();
         this.createSkybox();
         this.createTankMarkerSphere();
         this.createTankFloor();
+    }
+    
+    // 創建地面平面（使用 ground.jpg 紋理）
+    createGroundPlane() {
+        const size = this.boundarySize * 1.5; // 比場景邊界稍大
+        const segments = 32; // 增加分段數以獲得更好的紋理品質
+        const stepSize = size * 2 / segments;
+        
+        const vertices = [];
+        const indices = [];
+        
+        // 生成地面網格頂點
+        for (let i = 0; i <= segments; i++) {
+            for (let j = 0; j <= segments; j++) {
+                const x = -size + i * stepSize;
+                const z = -size + j * stepSize;
+                const y = this.floorLevel; // Y=0 地面
+                
+                const u = i / segments;
+                const v = j / segments;
+                
+                vertices.push(
+                    x, y, z,        // 位置
+                    0, 1, 0,        // 法向量（向上）
+                    u * 8, v * 8    // 紋理座標（重複8次製造地磚效果）
+                );
+            }
+        }
+        
+        // 生成索引
+        for (let i = 0; i < segments; i++) {
+            for (let j = 0; j < segments; j++) {
+                const topLeft = i * (segments + 1) + j;
+                const topRight = topLeft + 1;
+                const bottomLeft = (i + 1) * (segments + 1) + j;
+                const bottomRight = bottomLeft + 1;
+                
+                // 第一個三角形
+                indices.push(topLeft, bottomLeft, topRight);
+                // 第二個三角形
+                indices.push(topRight, bottomLeft, bottomRight);
+            }
+        }
+        
+        this.groundGeometry = {
+            vertices: new Float32Array(vertices),
+            indices: new Uint16Array(indices),
+            vertexBuffer: this.webglCore.createVertexBuffer(vertices),
+            indexBuffer: this.webglCore.createIndexBuffer(indices),
+            indexCount: indices.length
+        };
+        
+        console.log('Ground plane created with ground.jpg texture mapping');
     }
     
     // 創建坦克上方的球體標記
@@ -434,9 +488,11 @@ class Scene {
         const program = this.shaderManager.useProgram('phong');
         if (!program) return;
         
-        // 計算球體位置：坦克正上方80單位高度
-        const spherePosition = [tankPosition[0], 80, tankPosition[2]];
+        // 計算球體位置：坦克正上方25單位高度（降低高度）
+        const spherePosition = [tankPosition[0], 25, tankPosition[2]];
         const modelMatrix = MatrixLib.translate(spherePosition[0], spherePosition[1], spherePosition[2]);
+        
+        console.log('Mirror sphere position:', spherePosition);
         
         // 設定變換矩陣
         this.webglCore.setUniform(program, 'uModelMatrix', modelMatrix, 'mat4');
@@ -450,11 +506,11 @@ class Scene {
             lighting.applyToShader(this.webglCore, program, camera.getPosition());
         }
         
-        // 設定材質 - 簡單灰色，不使用紋理
-        this.webglCore.setUniform(program, 'uAmbientColor', this.markerSphereMaterial.ambient, 'vec3');
-        this.webglCore.setUniform(program, 'uDiffuseColor', this.markerSphereMaterial.diffuse, 'vec3');
-        this.webglCore.setUniform(program, 'uSpecularColor', this.markerSphereMaterial.specular, 'vec3');
-        this.webglCore.setUniform(program, 'uShininess', this.markerSphereMaterial.shininess, 'float');
+        // 設定材質 - 明亮紅色讓它更明顯
+        this.webglCore.setUniform(program, 'uAmbientColor', [0.3, 0.1, 0.1], 'vec3');
+        this.webglCore.setUniform(program, 'uDiffuseColor', [0.8, 0.2, 0.2], 'vec3');
+        this.webglCore.setUniform(program, 'uSpecularColor', [1.0, 0.5, 0.5], 'vec3');
+        this.webglCore.setUniform(program, 'uShininess', 64.0, 'float');
         this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         this.renderGeometry(program, this.tankMarkerSphere);
@@ -524,6 +580,10 @@ class Scene {
             this.webglCore.setUniform(program, 'uLightAttenuation', [1.0, 0.001, 0.000001], 'vec3');
         }
         
+        // 渲染地面平面（使用 ground.jpg 紋理）
+        this.renderGroundPlane(program);
+        
+        // 不使用紋理的其他物體
         this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         // 渲染地板
@@ -542,6 +602,128 @@ class Scene {
             
             // 渲染坦克底部的地板
             this.renderTankFloor(camera, lighting, tankPosition);
+        }
+    }
+    
+    // 渲染地面平面（完全重寫以確保正確顯示）
+    renderGroundPlane(program) {
+        if (!this.groundGeometry) {
+            console.error('Ground geometry not created!');
+            return;
+        }
+        
+        console.log('=== RENDERING GROUND PLANE ===');
+        
+        const modelMatrix = MatrixLib.identity();
+        
+        this.webglCore.setUniform(program, 'uModelMatrix', modelMatrix, 'mat4');
+        this.webglCore.setUniform(program, 'uNormalMatrix', MatrixLib.normalMatrix(modelMatrix), 'mat3');
+        
+        // 使用明亮的材質確保地面可見
+        this.webglCore.setUniform(program, 'uAmbientColor', [0.3, 0.3, 0.3], 'vec3');
+        this.webglCore.setUniform(program, 'uDiffuseColor', [0.8, 0.8, 0.8], 'vec3');
+        this.webglCore.setUniform(program, 'uSpecularColor', [0.2, 0.2, 0.2], 'vec3');
+        this.webglCore.setUniform(program, 'uShininess', 32.0, 'float');
+        
+        // 嘗試使用 ground.jpg 紋理
+        if (this.textureManager && this.textureManager.isTextureLoaded('ground')) {
+            this.textureManager.bindTexture('ground', 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+            console.log('Using ground.jpg texture');
+        } else {
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+            console.log('No ground texture, using material color');
+        }
+        
+        // 確保深度測試正確
+        this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.depthFunc(this.gl.LESS);
+        this.gl.depthMask(true);
+        
+        // 暫時禁用面剔除確保兩面都可見
+        this.gl.disable(this.gl.CULL_FACE);
+        
+        // 綁定頂點屬性
+        const stride = 8 * 4; // 8 個 float (position 3 + normal 3 + texCoord 2)
+        
+        // 位置屬性
+        if (this.webglCore.bindVertexAttribute(program, 'aPosition', this.groundGeometry.vertexBuffer, 3, this.gl.FLOAT, false, stride, 0)) {
+            console.log('Position attribute bound');
+        }
+        
+        // 法向量屬性
+        if (this.webglCore.bindVertexAttribute(program, 'aNormal', this.groundGeometry.vertexBuffer, 3, this.gl.FLOAT, false, stride, 3 * 4)) {
+            console.log('Normal attribute bound');
+        }
+        
+        // 紋理座標屬性
+        if (this.webglCore.bindVertexAttribute(program, 'aTexCoord', this.groundGeometry.vertexBuffer, 2, this.gl.FLOAT, false, stride, 6 * 4)) {
+            console.log('TexCoord attribute bound');
+        }
+        
+        // 繪製
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.groundGeometry.indexBuffer);
+        this.webglCore.drawElements(this.gl.TRIANGLES, this.groundGeometry.indexCount);
+        
+        console.log(`Ground plane rendered with ${this.groundGeometry.indexCount} indices`);
+        
+        // 重新啟用面剔除
+        this.gl.enable(this.gl.CULL_FACE);
+        
+        console.log('=== END GROUND PLANE RENDER ===');
+    }
+    
+    // 渲染地面平面（恢復 ground.jpg 紋理）
+    renderGroundPlane(program) {
+        if (!this.groundGeometry) {
+            console.error('Ground geometry not created!');
+            return;
+        }
+        
+        const modelMatrix = MatrixLib.identity();
+        
+        this.webglCore.setUniform(program, 'uModelMatrix', modelMatrix, 'mat4');
+        this.webglCore.setUniform(program, 'uNormalMatrix', MatrixLib.normalMatrix(modelMatrix), 'mat3');
+        
+        // 恢復正常的地面材質設定
+        this.webglCore.setUniform(program, 'uAmbientColor', this.floorMaterial.ambient, 'vec3');
+        this.webglCore.setUniform(program, 'uDiffuseColor', this.floorMaterial.diffuse, 'vec3');
+        this.webglCore.setUniform(program, 'uSpecularColor', this.floorMaterial.specular, 'vec3');
+        this.webglCore.setUniform(program, 'uShininess', this.floorMaterial.shininess, 'float');
+        
+        // 使用 ground.jpg 紋理
+        if (this.textureManager) {
+            this.textureManager.bindTexture('ground', 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+            console.log('Ground rendered with ground.jpg texture');
+        } else {
+            // 後備：使用淺灰色
+            this.webglCore.setUniform(program, 'uDiffuseColor', [0.6, 0.6, 0.6], 'vec3');
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+            console.warn('TextureManager not available, using fallback color');
+        }
+        
+        // 確保深度設定正確
+        this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.depthFunc(this.gl.LEQUAL);
+        this.gl.depthMask(true);
+        
+        // 綁定頂點屬性並渲染
+        const positionBound = this.webglCore.bindVertexAttribute(
+            program, 'aPosition', this.groundGeometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 0
+        );
+        const normalBound = this.webglCore.bindVertexAttribute(
+            program, 'aNormal', this.groundGeometry.vertexBuffer, 3, this.gl.FLOAT, false, 8 * 4, 3 * 4
+        );
+        const texCoordBound = this.webglCore.bindVertexAttribute(
+            program, 'aTexCoord', this.groundGeometry.vertexBuffer, 2, this.gl.FLOAT, false, 8 * 4, 6 * 4
+        );
+        
+        if (positionBound) {
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.groundGeometry.indexBuffer);
+            this.webglCore.drawElements(this.gl.TRIANGLES, this.groundGeometry.indexCount);
         }
     }
     

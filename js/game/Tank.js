@@ -63,7 +63,7 @@ class Tank {
         this.createBarrelGeometry();
     }
     
-    // 創建底座幾何體（長方體）
+    // 創建底座幾何體（長方體）- 修復紋理貼圖
     createBaseGeometry() {
         const width = 12;
         const height = 4;
@@ -77,37 +77,37 @@ class Tank {
         const offsetY = halfHeight;
         
         const vertices = [
-            // 前面 (Z+)
+            // 前面 (Z+) - 確保每個面都有完整的0-1紋理座標
             -halfWidth, -halfHeight + offsetY,  halfDepth,  0,  0,  1,  0, 0,
              halfWidth, -halfHeight + offsetY,  halfDepth,  0,  0,  1,  1, 0,
              halfWidth,  halfHeight + offsetY,  halfDepth,  0,  0,  1,  1, 1,
             -halfWidth,  halfHeight + offsetY,  halfDepth,  0,  0,  1,  0, 1,
             
-            // 後面 (Z-)
+            // 後面 (Z-) - 完整紋理座標
              halfWidth, -halfHeight + offsetY, -halfDepth,  0,  0, -1,  0, 0,
             -halfWidth, -halfHeight + offsetY, -halfDepth,  0,  0, -1,  1, 0,
             -halfWidth,  halfHeight + offsetY, -halfDepth,  0,  0, -1,  1, 1,
              halfWidth,  halfHeight + offsetY, -halfDepth,  0,  0, -1,  0, 1,
             
-            // 上面 (Y+)
+            // 上面 (Y+) - 完整紋理座標
             -halfWidth,  halfHeight + offsetY,  halfDepth,  0,  1,  0,  0, 0,
              halfWidth,  halfHeight + offsetY,  halfDepth,  0,  1,  0,  1, 0,
              halfWidth,  halfHeight + offsetY, -halfDepth,  0,  1,  0,  1, 1,
             -halfWidth,  halfHeight + offsetY, -halfDepth,  0,  1,  0,  0, 1,
             
-            // 下面 (Y-)
+            // 下面 (Y-) - 完整紋理座標
             -halfWidth, -halfHeight + offsetY, -halfDepth,  0, -1,  0,  0, 0,
              halfWidth, -halfHeight + offsetY, -halfDepth,  0, -1,  0,  1, 0,
              halfWidth, -halfHeight + offsetY,  halfDepth,  0, -1,  0,  1, 1,
             -halfWidth, -halfHeight + offsetY,  halfDepth,  0, -1,  0,  0, 1,
             
-            // 右面 (X+)
+            // 右面 (X+) - 完整紋理座標
              halfWidth, -halfHeight + offsetY,  halfDepth,  1,  0,  0,  0, 0,
              halfWidth, -halfHeight + offsetY, -halfDepth,  1,  0,  0,  1, 0,
              halfWidth,  halfHeight + offsetY, -halfDepth,  1,  0,  0,  1, 1,
              halfWidth,  halfHeight + offsetY,  halfDepth,  1,  0,  0,  0, 1,
             
-            // 左面 (X-)
+            // 左面 (X-) - 完整紋理座標
             -halfWidth, -halfHeight + offsetY, -halfDepth, -1,  0,  0,  0, 0,
             -halfWidth, -halfHeight + offsetY,  halfDepth, -1,  0,  0,  1, 0,
             -halfWidth,  halfHeight + offsetY,  halfDepth, -1,  0,  0,  1, 1,
@@ -132,7 +132,7 @@ class Tank {
         };
     }
     
-    // 創建砲座幾何體（較小的長方體）
+    // 創建砲座幾何體（較小的長方體）- 修復紋理貼圖
     createTurretGeometry() {
         const width = 8;
         const height = 3;
@@ -146,37 +146,37 @@ class Tank {
         const offsetY = 4 + halfHeight; // 底座高度4 + 砲座一半高度
         
         const vertices = [
-            // 前面 (Z+)
+            // 前面 (Z+) - 完整紋理座標 0-1
             -halfWidth, -halfHeight + offsetY,  halfDepth,  0,  0,  1,  0, 0,
              halfWidth, -halfHeight + offsetY,  halfDepth,  0,  0,  1,  1, 0,
              halfWidth,  halfHeight + offsetY,  halfDepth,  0,  0,  1,  1, 1,
             -halfWidth,  halfHeight + offsetY,  halfDepth,  0,  0,  1,  0, 1,
             
-            // 後面 (Z-)
+            // 後面 (Z-) - 完整紋理座標 0-1
              halfWidth, -halfHeight + offsetY, -halfDepth,  0,  0, -1,  0, 0,
             -halfWidth, -halfHeight + offsetY, -halfDepth,  0,  0, -1,  1, 0,
             -halfWidth,  halfHeight + offsetY, -halfDepth,  0,  0, -1,  1, 1,
              halfWidth,  halfHeight + offsetY, -halfDepth,  0,  0, -1,  0, 1,
             
-            // 上面 (Y+)
+            // 上面 (Y+) - 完整紋理座標 0-1
             -halfWidth,  halfHeight + offsetY,  halfDepth,  0,  1,  0,  0, 0,
              halfWidth,  halfHeight + offsetY,  halfDepth,  0,  1,  0,  1, 0,
              halfWidth,  halfHeight + offsetY, -halfDepth,  0,  1,  0,  1, 1,
             -halfWidth,  halfHeight + offsetY, -halfDepth,  0,  1,  0,  0, 1,
             
-            // 下面 (Y-)
+            // 下面 (Y-) - 完整紋理座標 0-1
             -halfWidth, -halfHeight + offsetY, -halfDepth,  0, -1,  0,  0, 0,
              halfWidth, -halfHeight + offsetY, -halfDepth,  0, -1,  0,  1, 0,
              halfWidth, -halfHeight + offsetY,  halfDepth,  0, -1,  0,  1, 1,
             -halfWidth, -halfHeight + offsetY,  halfDepth,  0, -1,  0,  0, 1,
             
-            // 右面 (X+)
+            // 右面 (X+) - 完整紋理座標 0-1
              halfWidth, -halfHeight + offsetY,  halfDepth,  1,  0,  0,  0, 0,
              halfWidth, -halfHeight + offsetY, -halfDepth,  1,  0,  0,  1, 0,
              halfWidth,  halfHeight + offsetY, -halfDepth,  1,  0,  0,  1, 1,
              halfWidth,  halfHeight + offsetY,  halfDepth,  1,  0,  0,  0, 1,
             
-            // 左面 (X-)
+            // 左面 (X-) - 完整紋理座標 0-1
             -halfWidth, -halfHeight + offsetY, -halfDepth, -1,  0,  0,  0, 0,
             -halfWidth, -halfHeight + offsetY,  halfDepth, -1,  0,  0,  1, 0,
             -halfWidth,  halfHeight + offsetY,  halfDepth, -1,  0,  0,  1, 1,
@@ -201,7 +201,7 @@ class Tank {
         };
     }
     
-    // 創建砲管幾何體（圓柱體）
+    // 創建砲管幾何體（圓柱體）- 修復紋理貼圖
     createBarrelGeometry() {
         const radius = 0.8;
         const length = 12;
@@ -215,7 +215,7 @@ class Tank {
         const startZ = 0;
         const endZ = length;
         
-        // 生成圓柱體頂點
+        // 生成圓柱體頂點 - 確保紋理座標覆蓋整個表面
         for (let i = 0; i <= segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             const x = Math.cos(angle) * radius;
@@ -225,14 +225,14 @@ class Tank {
             vertices.push(
                 x, y + offsetY, startZ,    // 位置
                 x / radius, y / radius, 0, // 法向量
-                i / segments, 0            // 紋理座標
+                i / segments, 0            // 紋理座標 (0到1)
             );
             
             // 圓柱體後端
             vertices.push(
                 x, y + offsetY, endZ,      // 位置
                 x / radius, y / radius, 0, // 法向量
-                i / segments, 1            // 紋理座標
+                i / segments, 1            // 紋理座標 (0到1)
             );
         }
         
@@ -472,15 +472,15 @@ class Tank {
         }
     }
     
-    // 渲染坦克（修改為支持紋理）
+    // 渲染坦克（修改為支持分別的紋理）
     render(camera, lighting, textureManager = null) {
-        // 渲染底座 - 使用tankBase紋理
+        // 渲染底座 - 使用 tank_base.jpg 紋理
         this.renderComponent(this.baseGeometry, this.materials.base, this.baseMatrix, camera, lighting, textureManager, 'tankBase');
         
-        // 渲染砲座 - 使用tankTurret紋理
+        // 渲染砲座 - 使用 tank_turret.jpg 紋理  
         this.renderComponent(this.turretGeometry, this.materials.turret, this.turretMatrix, camera, lighting, textureManager, 'tankTurret');
         
-        // 渲染砲管 - 使用tankBarrel紋理
+        // 渲染砲管 - 使用 tank_barrel.jpg 紋理
         this.renderComponent(this.barrelGeometry, this.materials.barrel, this.barrelMatrix, camera, lighting, textureManager, 'tankBarrel');
     }
     
