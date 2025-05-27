@@ -11,7 +11,7 @@ class Scene {
         
         // 場景參數
         this.boundarySize = 800;
-        this.floorLevel = 0;
+        this.floorLevel = 0; // 地面高度設為 y=0
         this.ceilingHeight = 800;
         
         // 幾何體
@@ -22,9 +22,9 @@ class Scene {
         
         // 材質
         this.floorMaterial = {
-            ambient: [0.1, 0.1, 0.1],
-            diffuse: [0.3, 0.3, 0.3],
-            specular: [0.5, 0.5, 0.5],
+            ambient: [0.2, 0.2, 0.2],
+            diffuse: [0.8, 0.8, 0.8],  // 增加漫反射，讓紋理更明顯
+            specular: [0.3, 0.3, 0.3],
             shininess: 16.0
         };
         
@@ -111,47 +111,58 @@ class Scene {
         console.log('Skybox geometry created');
     }
     
-    // 創建地板
+    // 創建地板 - 使用長方體而非網格
     createFloor() {
         const size = this.boundarySize;
-        const segments = 20; // 分段數，用於產生網格效果
-        const stepSize = size * 2 / segments;
+        const thickness = 4; // 地板厚度，與坦克底座高度一致
+        const y = this.floorLevel - thickness / 2; // 地板中心位置，讓地板頂部在 y=0
         
-        const vertices = [];
-        const indices = [];
+        const vertices = [
+            // 上面 (Y+) - 地面
+            -size, thickness/2, -size,    0,  1,  0,    0, 0,
+             size, thickness/2, -size,    0,  1,  0,   10, 0,
+             size, thickness/2,  size,    0,  1,  0,   10, 10,
+            -size, thickness/2,  size,    0,  1,  0,    0, 10,
+            
+            // 下面 (Y-) - 地板底部
+            -size, -thickness/2,  size,   0, -1,  0,    0, 0,
+             size, -thickness/2,  size,   0, -1,  0,   10, 0,
+             size, -thickness/2, -size,   0, -1,  0,   10, 10,
+            -size, -thickness/2, -size,   0, -1,  0,    0, 10,
+            
+            // 前面 (Z+)
+            -size, -thickness/2,  size,   0,  0,  1,    0, 0,
+             size, -thickness/2,  size,   0,  0,  1,   10, 0,
+             size,  thickness/2,  size,   0,  0,  1,   10, 1,
+            -size,  thickness/2,  size,   0,  0,  1,    0, 1,
+            
+            // 後面 (Z-)
+             size, -thickness/2, -size,   0,  0, -1,    0, 0,
+            -size, -thickness/2, -size,   0,  0, -1,   10, 0,
+            -size,  thickness/2, -size,   0,  0, -1,   10, 1,
+             size,  thickness/2, -size,   0,  0, -1,    0, 1,
+            
+            // 右面 (X+)
+             size, -thickness/2,  size,   1,  0,  0,    0, 0,
+             size, -thickness/2, -size,   1,  0,  0,   10, 0,
+             size,  thickness/2, -size,   1,  0,  0,   10, 1,
+             size,  thickness/2,  size,   1,  0,  0,    0, 1,
+            
+            // 左面 (X-)
+            -size, -thickness/2, -size,  -1,  0,  0,    0, 0,
+            -size, -thickness/2,  size,  -1,  0,  0,   10, 0,
+            -size,  thickness/2,  size,  -1,  0,  0,   10, 1,
+            -size,  thickness/2, -size,  -1,  0,  0,    0, 1
+        ];
         
-        // 生成網格頂點
-        for (let i = 0; i <= segments; i++) {
-            for (let j = 0; j <= segments; j++) {
-                const x = -size + i * stepSize;
-                const z = -size + j * stepSize;
-                const y = this.floorLevel;
-                
-                const u = i / segments;
-                const v = j / segments;
-                
-                vertices.push(
-                    x, y, z,        // 位置
-                    0, 1, 0,        // 法向量（向上）
-                    u * 10, v * 10  // 紋理座標（重複10次）
-                );
-            }
-        }
-        
-        // 生成索引
-        for (let i = 0; i < segments; i++) {
-            for (let j = 0; j < segments; j++) {
-                const topLeft = i * (segments + 1) + j;
-                const topRight = topLeft + 1;
-                const bottomLeft = (i + 1) * (segments + 1) + j;
-                const bottomRight = bottomLeft + 1;
-                
-                // 第一個三角形
-                indices.push(topLeft, bottomLeft, topRight);
-                // 第二個三角形
-                indices.push(topRight, bottomLeft, bottomRight);
-            }
-        }
+        const indices = [
+            0,  1,  2,    0,  2,  3,    // 上面 (地面)
+            4,  5,  6,    4,  6,  7,    // 下面
+            8,  9,  10,   8,  10, 11,   // 前面
+            12, 13, 14,   12, 14, 15,   // 後面
+            16, 17, 18,   16, 18, 19,   // 右面
+            20, 21, 22,   20, 22, 23    // 左面
+        ];
         
         this.floorGeometry = {
             vertices: new Float32Array(vertices),
@@ -160,6 +171,8 @@ class Scene {
             indexBuffer: this.webglCore.createIndexBuffer(indices),
             indexCount: indices.length
         };
+        
+        console.log('Floor geometry created as box with ground texture coordinates');
     }
     
     // 創建牆壁
@@ -324,9 +337,8 @@ class Scene {
         this.webglCore.setUniform(program, 'uCameraPosition', camera.getPosition(), 'vec3');
         this.webglCore.setUniform(program, 'uLightPosition', lighting.position, 'vec3');
         this.webglCore.setUniform(program, 'uLightColor', lighting.color, 'vec3');
-        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
-        // 渲染地板
+        // 渲染地板（使用 ground.jpg 紋理）
         this.renderFloor(program);
         
         // 渲染牆壁
@@ -349,6 +361,17 @@ class Scene {
         this.webglCore.setUniform(program, 'uSpecularColor', this.floorMaterial.specular, 'vec3');
         this.webglCore.setUniform(program, 'uShininess', this.floorMaterial.shininess, 'float');
         
+        // 嘗試使用 ground.jpg 紋理
+        if (this.textureManager && this.textureManager.getTexture('ground')) {
+            this.textureManager.bindTexture('ground', 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+            console.log('Using ground.jpg texture for floor');
+        } else {
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+            console.log('Ground texture not loaded, using default material');
+        }
+        
         this.renderGeometry(program, this.floorGeometry);
     }
     
@@ -364,6 +387,7 @@ class Scene {
         this.webglCore.setUniform(program, 'uDiffuseColor', this.wallMaterial.diffuse, 'vec3');
         this.webglCore.setUniform(program, 'uSpecularColor', this.wallMaterial.specular, 'vec3');
         this.webglCore.setUniform(program, 'uShininess', this.wallMaterial.shininess, 'float');
+        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         this.renderGeometry(program, this.wallGeometry);
     }
@@ -384,6 +408,7 @@ class Scene {
         this.webglCore.setUniform(program, 'uDiffuseColor', [0.1, 0.1, 0.2], 'vec3');
         this.webglCore.setUniform(program, 'uSpecularColor', [0.2, 0.2, 0.3], 'vec3');
         this.webglCore.setUniform(program, 'uShininess', 4.0, 'float');
+        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         this.renderGeometry(program, this.ceilingGeometry);
         

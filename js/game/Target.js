@@ -14,10 +14,10 @@ class Target {
         this.active = true;
         
         // 統一球體半徑為20單位
-        this.radius = 20;
+        this.radius = 10;
         
         // 運動屬性 - 速度減半
-        this.rotationSpeed = MatrixLib.degToRad(30); // 從60度/秒減為30度/秒
+        this.rotationSpeed = MatrixLib.degToRad(15); // 從60度/秒減為30度/秒
         this.bobSpeed = 0.5; // 上下浮動速度減半
         this.bobAmplitude = 2; // 浮動幅度減半
         
@@ -235,16 +235,15 @@ class Target {
         this.updateMatrix();
     }
     
-    // 生成隨機位置
+    // 生成隨機位置 - 調整為與炮管同高度
     generateRandomPosition() {
-        const boundary = 700; // 場景邊界內
-        const minHeight = 30;  // 最小高度
-        const maxHeight = 200; // 最大高度
+        const boundary = 700; // 場景邊界內，留出安全邊距
+        const cannonHeight = 5.5; // 炮管高度，與坦克炮管中心一致
         
         return [
-            (Math.random() - 0.5) * boundary * 2,
-            minHeight + Math.random() * (maxHeight - minHeight),
-            (Math.random() - 0.5) * boundary * 2
+            (Math.random() - 0.5) * boundary * 2, // X: -700 到 700
+            cannonHeight, // Y: 5.5，與炮管高度一致
+            (Math.random() - 0.5) * boundary * 2  // Z: -700 到 700
         ];
     }
     
@@ -389,16 +388,15 @@ class TargetManager {
         });
     }
     
-    // 生成隨機位置
+    // 生成隨機位置 - 調整為與炮管同高度
     generateRandomPosition() {
-        const boundary = 700; // 場景邊界內
-        const minHeight = 30;  // 最小高度（避免貼地）
-        const maxHeight = 200; // 最大高度
+        const boundary = 700; // 場景邊界內，留出安全邊距
+        const cannonHeight = 5.5; // 炮管高度，與坦克炮管中心一致
         
         return [
-            (Math.random() - 0.5) * boundary * 2,
-            minHeight + Math.random() * (maxHeight - minHeight),
-            (Math.random() - 0.5) * boundary * 2
+            (Math.random() - 0.5) * boundary * 2, // X: -700 到 700
+            cannonHeight, // Y: 5.5，與炮管高度一致
+            (Math.random() - 0.5) * boundary * 2  // Z: -700 到 700
         ];
     }
     
