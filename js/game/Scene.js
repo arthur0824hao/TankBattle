@@ -1,12 +1,13 @@
 /**
  * 場景管理器
- * 管理場景幾何體、邊界和環境渲染
+ * 管理場景幾何體、邊界、環境渲染和天空盒
  */
 class Scene {
-    constructor(webglCore, shaderManager) {
+    constructor(webglCore, shaderManager, textureManager = null) {
         this.webglCore = webglCore;
         this.gl = webglCore.getContext();
         this.shaderManager = shaderManager;
+        this.textureManager = textureManager;
         
         // 場景參數
         this.boundarySize = 800;
@@ -17,6 +18,7 @@ class Scene {
         this.floorGeometry = null;
         this.wallGeometry = null;
         this.ceilingGeometry = null;
+        this.skyboxGeometry = null;
         
         // 材質
         this.floorMaterial = {
@@ -41,6 +43,72 @@ class Scene {
         this.createFloor();
         this.createWalls();
         this.createCeiling();
+        this.createSkybox();
+    }
+    
+    // 創建天空盒幾何體
+    createSkybox() {
+        // 創建一個大立方體，內表面朝向攝影機
+        const size = 1.0; // 使用標準化大小，不需要太大
+        
+        const vertices = [
+            // 位置（只需要位置，不需要法向量和紋理座標）
+            // 前面 (Z+)
+            -size, -size,  size,
+             size, -size,  size,
+             size,  size,  size,
+            -size,  size,  size,
+            
+            // 後面 (Z-)
+             size, -size, -size,
+            -size, -size, -size,
+            -size,  size, -size,
+             size,  size, -size,
+            
+            // 上面 (Y+)
+            -size,  size,  size,
+             size,  size,  size,
+             size,  size, -size,
+            -size,  size, -size,
+            
+            // 下面 (Y-)
+            -size, -size, -size,
+             size, -size, -size,
+             size, -size,  size,
+            -size, -size,  size,
+            
+            // 右面 (X+)
+             size, -size,  size,
+             size, -size, -size,
+             size,  size, -size,
+             size,  size,  size,
+            
+            // 左面 (X-)
+            -size, -size, -size,
+            -size, -size,  size,
+            -size,  size,  size,
+            -size,  size, -size
+        ];
+        
+        // 索引（注意順序，要讓內表面朝向攝影機）
+        const indices = [
+            0,  2,  1,    0,  3,  2,    // 前面
+            4,  6,  5,    4,  7,  6,    // 後面
+            8,  10, 9,    8,  11, 10,   // 上面
+            12, 14, 13,   12, 15, 14,   // 下面
+            16, 18, 17,   16, 19, 18,   // 右面
+            20, 22, 21,   20, 23, 22    // 左面
+        ];
+        
+        this.skyboxGeometry = {
+            vertices: new Float32Array(vertices),
+            indices: new Uint16Array(indices),
+            vertexBuffer: this.webglCore.createVertexBuffer(vertices),
+            indexBuffer: this.webglCore.createIndexBuffer(indices),
+            indexCount: indices.length
+        };
+        
+        console.log('Skybox geometry created');
     }
     
     // 創建地板
@@ -193,8 +261,60 @@ class Scene {
         };
     }
     
+    // 渲染天空盒
+    renderSkybox(camera) {
+        if (!this.skyboxGeometry || !this.textureManager) return;
+        
+        const program = this.shaderManager.useProgram('skybox');
+        if (!program) return;
+        
+        // 保存當前狀態
+        const depthMask = this.gl.getParameter(this.gl.DEPTH_WRITEMASK);
+        const depthFunc = this.gl.getParameter(this.gl.DEPTH_FUNC);
+        
+        // 設定天空盒渲染狀態
+        this.gl.depthMask(false); // 禁用深度寫入
+        this.gl.depthFunc(this.gl.LEQUAL); // 改變深度測試函數
+        
+        // 創建移除平移的視圖矩陣（只保留旋轉）
+        const viewMatrix = camera.getViewMatrix();
+        const skyboxViewMatrix = new Float32Array(16);
+        
+        // 複製旋轉部分，清除平移部分
+        for (let i = 0; i < 16; i++) {
+            skyboxViewMatrix[i] = viewMatrix[i];
+        }
+        skyboxViewMatrix[12] = 0; // 清除 X 平移
+        skyboxViewMatrix[13] = 0; // 清除 Y 平移
+        skyboxViewMatrix[14] = 0; // 清除 Z 平移
+        
+        // 設定 uniform
+        this.webglCore.setUniform(program, 'uViewMatrix', skyboxViewMatrix, 'mat4');
+        this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
+        
+        // 綁定天空盒 cube map
+        this.textureManager.bindCubeMap('skybox', 0);
+        this.webglCore.setUniform(program, 'uSkybox', 0, 'sampler2D');
+        
+        // 綁定頂點屬性（只有位置）
+        this.webglCore.bindVertexAttribute(
+            program, 'aPosition', this.skyboxGeometry.vertexBuffer, 3, this.gl.FLOAT, false, 0, 0
+        );
+        
+        // 繪製天空盒
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.skyboxGeometry.indexBuffer);
+        this.webglCore.drawElements(this.gl.TRIANGLES, this.skyboxGeometry.indexCount);
+        
+        // 恢復狀態
+        this.gl.depthMask(depthMask);
+        this.gl.depthFunc(depthFunc);
+    }
+    
     // 渲染場景
     render(camera, lighting) {
+        // 首先渲染天空盒
+        this.renderSkybox(camera);
+        
         const program = this.shaderManager.useProgram('phong');
         if (!program) return;
         

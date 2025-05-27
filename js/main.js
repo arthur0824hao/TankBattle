@@ -46,7 +46,7 @@ class TankBattleGame {
             this.initLighting();
             
             // 初始化遊戲物件
-            this.initGameObjects();
+            await this.initGameObjects();
             
             // 設定事件監聽
             this.setupEventListeners();
@@ -122,6 +122,29 @@ class TankBattleGame {
         console.log('Lighting system initialized');
     }
     
+    // 初始化遊戲物件
+    async initGameObjects() {
+        // 初始化渲染系統
+        await this.initRenderingSystems();
+        
+        // 創建場景（傳入textureManager）
+        this.scene = new Scene(this.webglCore, this.shaderManager, this.textureManager);
+        
+        // 創建坦克
+        this.tank = new Tank(this.webglCore, this.shaderManager);
+        
+        // 設定攝影機跟隨坦克
+        this.camera.setFollowTarget(this.tank);
+        
+        // 創建砲彈管理器
+        this.bulletManager = new BulletManager(this.webglCore, this.shaderManager);
+        
+        // 創建目標管理器
+        this.targetManager = new TargetManager(this.webglCore, this.shaderManager);
+        
+        console.log('Game objects created');
+    }
+    
     // 初始化渲染系統
     async initRenderingSystems() {
         // 初始化紋理管理器
@@ -149,12 +172,6 @@ class TankBattleGame {
             this.ui.updateViewIndicator(this.camera.getViewMode());
         }
         
-        // 添加陰影投射物件
-        this.shadowRenderer.addShadowCaster(this.tank);
-        this.targetManager.getTargets().forEach(target => {
-            this.shadowRenderer.addShadowCaster(target);
-        });
-        
         console.log('Rendering systems initialized');
     }
     
@@ -171,31 +188,36 @@ class TankBattleGame {
             
             // 環境紋理
             { name: 'ground', url: 'assets/textures/ground.jpg', type: 'texture' },
-            { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' },
-            
-            // 天空盒
-            {
-                name: 'skybox',
-                type: 'cubemap',
-                urls: [
-                    'assets/textures/skybox/px.jpg', // +X (右)
-                    'assets/textures/skybox/nx.jpg', // -X (左)
-                    'assets/textures/skybox/py.jpg', // +Y (上)
-                    'assets/textures/skybox/ny.jpg', // -Y (下)
-                    'assets/textures/skybox/pz.jpg', // +Z (前)
-                    'assets/textures/skybox/nz.jpg'  // -Z (後)
-                ]
-            }
+            { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' }
         ];
         
+        // 天空盒紋理（單獨處理）
+        const skyboxUrls = {
+            px: 'assets/textures/skybox/px.jpg', // +X (右)
+            nx: 'assets/textures/skybox/nx.jpg', // -X (左)
+            py: 'assets/textures/skybox/py.jpg', // +Y (上)
+            ny: 'assets/textures/skybox/ny.jpg', // -Y (下)
+            pz: 'assets/textures/skybox/pz.jpg', // +Z (前)
+            nz: 'assets/textures/skybox/nz.jpg'  // -Z (後)
+        };
+        
         try {
-            const results = await this.textureManager.loadTextures(texturesToLoad);
+            // 載入一般紋理
+            const textureResults = await Promise.allSettled(
+                texturesToLoad.map(texture => 
+                    this.textureManager.loadTexture(texture.name, texture.url)
+                )
+            );
+            
+            // 載入天空盒 cube map
+            const skyboxResult = await this.textureManager.loadCubeMap('skybox', skyboxUrls);
             
             // 檢查載入結果
-            const successful = results.filter(r => r.status === 'fulfilled').length;
-            const failed = results.filter(r => r.status === 'rejected').length;
+            const successful = textureResults.filter(r => r.status === 'fulfilled').length;
+            const failed = textureResults.filter(r => r.status === 'rejected').length;
             
             console.log(`Texture loading completed: ${successful} loaded, ${failed} failed`);
+            console.log('Skybox cube map loaded:', !!skyboxResult);
             
             // 為失敗的紋理創建程序化替代品
             if (failed > 0) {
@@ -203,8 +225,8 @@ class TankBattleGame {
             }
             
             // 顯示記憶體使用情況
-            const memStats = this.textureManager.getMemoryStats();
-            console.log(`Texture memory usage: ${memStats.totalMemoryMB.toFixed(2)} MB`);
+            const memStats = this.textureManager.getStats();
+            console.log(`Texture memory usage: textures=${memStats.textures}, cubeMaps=${memStats.cubeMaps}`);
             
         } catch (error) {
             console.error('Error loading textures:', error);
@@ -217,44 +239,17 @@ class TankBattleGame {
     createFallbackTextures() {
         console.log('Creating fallback procedural textures...');
         
-        // 創建測試紋理
-        this.textureManager.createCheckerboardTexture('fallback_checker', 256, 32);
-        this.textureManager.createNoiseTexture('fallback_noise', 256);
-        
         // 為坦克組件創建簡單顏色紋理
-        this.textureManager.createProceduralTexture('fallback_green', 64, 64, (data, w, h) => {
-            for (let i = 0; i < data.length; i += 4) {
-                data[i] = 50;      // R
-                data[i + 1] = 150; // G
-                data[i + 2] = 50;  // B
-                data[i + 3] = 255; // A
-            }
-        });
+        const greenTexture = this.textureManager.createSolidColorTexture([50, 150, 50, 255], 64, 64);
+        this.textureManager.textures.set('fallback_green', greenTexture);
+        
+        // 創建後備天空盒（如果需要）
+        if (!this.textureManager.getCubeMap('skybox')) {
+            const fallbackSkybox = this.textureManager.createSolidColorCubeMap([128, 180, 255, 255], 64);
+            this.textureManager.cubeMaps.set('skybox', fallbackSkybox);
+        }
         
         console.log('Fallback textures created');
-    }
-    
-    // 初始化遊戲物件
-    initGameObjects() {
-        // 創建場景
-        this.scene = new Scene(this.webglCore, this.shaderManager);
-        
-        // 創建坦克
-        this.tank = new Tank(this.webglCore, this.shaderManager);
-        
-        // 設定攝影機跟隨坦克
-        this.camera.setFollowTarget(this.tank);
-        
-        // 創建砲彈管理器
-        this.bulletManager = new BulletManager(this.webglCore, this.shaderManager);
-        
-        // 創建目標管理器
-        this.targetManager = new TargetManager(this.webglCore, this.shaderManager);
-        
-        // 初始化渲染系統
-        this.initRenderingSystems();
-        
-        console.log('Game objects created');
     }
     
     // 設定事件監聽
@@ -414,6 +409,14 @@ class TankBattleGame {
         if (this.ui) {
             this.ui.updateScore(this.gameManager.getScore());
         }
+        
+        // 添加陰影投射物件（如果尚未添加）
+        if (this.shadowRenderer && this.shadowRenderer.shadowCasters.length === 0) {
+            this.shadowRenderer.addShadowCaster(this.tank);
+            this.targetManager.getTargets().forEach(target => {
+                this.shadowRenderer.addShadowCaster(target);
+            });
+        }
     }
     
     // 檢查碰撞
@@ -437,7 +440,7 @@ class TankBattleGame {
             color: this.lighting.getMainLight().color
         };
         
-        // 渲染場景環境
+        // 渲染場景環境（包含天空盒）
         if (this.scene) {
             this.scene.render(this.camera, lightData);
         }

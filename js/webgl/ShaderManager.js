@@ -17,6 +17,9 @@ class ShaderManager {
             // 載入Phong光照著色器
             await this.loadShaderProgram('phong', 'shaders/phong.vert', 'shaders/phong.frag');
             
+            // 載入天空盒著色器
+            await this.loadShaderProgram('skybox', 'shaders/skybox.vert', 'shaders/skybox.frag');
+            
             console.log('All shaders loaded successfully');
             return true;
         } catch (error) {
@@ -141,6 +144,37 @@ void main() {
     
     vec3 finalColor = ambient + (finalDiffuse + specular) * uLightColor * attenuation;
     gl_FragColor = vec4(finalColor, 1.0);
+}
+            `;
+        } else if (path.includes('skybox.vert')) {
+            return `
+attribute vec3 aPosition;
+
+uniform mat4 uViewMatrix;
+uniform mat4 uProjectionMatrix;
+
+varying vec3 vTexCoord;
+
+void main() {
+    // 使用位置作為紋理座標方向向量
+    vTexCoord = aPosition;
+    
+    // 計算位置，確保天空盒總是在遠處
+    vec4 pos = uProjectionMatrix * uViewMatrix * vec4(aPosition, 1.0);
+    
+    // 設定 z = w，讓深度值總是 1.0（最遠）
+    gl_Position = pos.xyww;
+}
+            `;
+        } else if (path.includes('skybox.frag')) {
+            return `
+precision mediump float;
+
+varying vec3 vTexCoord;
+uniform samplerCube uSkybox;
+
+void main() {
+    gl_FragColor = textureCube(uSkybox, vTexCoord);
 }
             `;
         }
