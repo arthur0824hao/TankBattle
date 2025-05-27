@@ -6,7 +6,7 @@ class Lighting {
     constructor() {
         // 主點光源 - 位於場景中央頂部
         this.mainLight = {
-            position: [0, 400, 0],          // 調低高度到400
+            position: [0, 500, 0],          // 調低高度到500
             color: [1.0, 1.0, 0.95],        // 暖白光
             intensity: 2.0,                 // 增加強度
             attenuation: {
@@ -49,7 +49,7 @@ class Lighting {
         this.mainLight.intensity = Math.max(0.3, baseIntensity + flicker);
         
         // 可選：輕微的位置搖擺
-        const basePosY = 600;
+        const basePosY = 500; // 改為500
         const sway = Math.sin(this.animation.time * 0.5) * 5;
         this.mainLight.position[1] = basePosY + sway;
     }
@@ -124,7 +124,7 @@ class Lighting {
         if (!enabled) {
             // 重置到預設值
             this.mainLight.intensity = 1.2;
-            this.mainLight.position[1] = 600;
+            this.mainLight.position[1] = 500; // 改為500
         }
     }
     
@@ -187,7 +187,7 @@ class Lighting {
     // 重置光照到預設值
     reset() {
         this.mainLight = {
-            position: [0, 400, 0],
+            position: [0, 500, 0], // 改為500
             color: [1.0, 1.0, 0.95],
             intensity: 2.0,
             attenuation: {

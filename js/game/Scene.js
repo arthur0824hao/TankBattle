@@ -19,6 +19,8 @@ class Scene {
         this.wallGeometry = null;
         this.ceilingGeometry = null;
         this.skyboxGeometry = null;
+        this.tankMarkerSphere = null; // 坦克上方的球體
+        this.tankFloorGeometry = null; // 坦克底部的地板
         
         // 材質
         this.floorMaterial = {
@@ -35,6 +37,14 @@ class Scene {
             shininess: 8.0
         };
         
+        // 坦克上方球體材質
+        this.markerSphereMaterial = {
+            ambient: [0.1, 0.1, 0.1],
+            diffuse: [0.5, 0.5, 0.5],
+            specular: [0.2, 0.2, 0.2],
+            shininess: 8.0
+        };
+        
         this.createGeometry();
     }
     
@@ -44,6 +54,113 @@ class Scene {
         this.createWalls();
         this.createCeiling();
         this.createSkybox();
+        this.createTankMarkerSphere();
+        this.createTankFloor();
+    }
+    
+    // 創建坦克上方的球體標記
+    createTankMarkerSphere() {
+        const radius = 3;
+        const segments = 16;
+        const rings = 12;
+        
+        const vertices = [];
+        const indices = [];
+        
+        // 生成球體頂點
+        for (let ring = 0; ring <= rings; ring++) {
+            const phi = (ring / rings) * Math.PI;
+            const y = Math.cos(phi) * radius;
+            const ringRadius = Math.sin(phi) * radius;
+            
+            for (let segment = 0; segment <= segments; segment++) {
+                const theta = (segment / segments) * Math.PI * 2;
+                const x = Math.cos(theta) * ringRadius;
+                const z = Math.sin(theta) * ringRadius;
+                
+                // 位置
+                vertices.push(x, y, z);
+                
+                // 法向量（正規化的位置向量）
+                const length = Math.sqrt(x * x + y * y + z * z);
+                vertices.push(x / length, y / length, z / length);
+                
+                // 紋理座標
+                vertices.push(segment / segments, ring / rings);
+            }
+        }
+        
+        // 生成索引
+        for (let ring = 0; ring < rings; ring++) {
+            for (let segment = 0; segment < segments; segment++) {
+                const curr = ring * (segments + 1) + segment;
+                const next = curr + segments + 1;
+                
+                // 第一個三角形
+                indices.push(curr, next, curr + 1);
+                // 第二個三角形
+                indices.push(curr + 1, next, next + 1);
+            }
+        }
+        
+        this.tankMarkerSphere = {
+            vertices: new Float32Array(vertices),
+            indices: new Uint16Array(indices),
+            vertexBuffer: this.webglCore.createVertexBuffer(vertices),
+            indexBuffer: this.webglCore.createIndexBuffer(indices),
+            indexCount: indices.length
+        };
+    }
+    
+    // 創建坦克底部地板
+    createTankFloor() {
+        const size = 100; // 地板大小
+        const segments = 10; // 分段數，用於產生網格效果
+        const stepSize = size / segments;
+        
+        const vertices = [];
+        const indices = [];
+        
+        // 生成網格頂點，地板在Y=0平面
+        for (let i = 0; i <= segments; i++) {
+            for (let j = 0; j <= segments; j++) {
+                const x = -size/2 + i * stepSize;
+                const z = -size/2 + j * stepSize;
+                const y = 0; // 地板高度
+                
+                const u = i / segments;
+                const v = j / segments;
+                
+                vertices.push(
+                    x, y, z,        // 位置
+                    0, 1, 0,        // 法向量（向上）
+                    u * 5, v * 5    // 紋理座標（重複5次）
+                );
+            }
+        }
+        
+        // 生成索引
+        for (let i = 0; i < segments; i++) {
+            for (let j = 0; j < segments; j++) {
+                const topLeft = i * (segments + 1) + j;
+                const topRight = topLeft + 1;
+                const bottomLeft = (i + 1) * (segments + 1) + j;
+                const bottomRight = bottomLeft + 1;
+                
+                // 第一個三角形
+                indices.push(topLeft, bottomLeft, topRight);
+                // 第二個三角形
+                indices.push(topRight, bottomLeft, bottomRight);
+            }
+        }
+        
+        this.tankFloorGeometry = {
+            vertices: new Float32Array(vertices),
+            indices: new Uint16Array(indices),
+            vertexBuffer: this.webglCore.createVertexBuffer(vertices),
+            indexBuffer: this.webglCore.createIndexBuffer(indices),
+            indexCount: indices.length
+        };
     }
     
     // 創建天空盒幾何體
@@ -310,8 +427,82 @@ class Scene {
         this.gl.depthFunc(depthFunc);
     }
     
+    // 渲染坦克上方的球體標記
+    renderTankMarkerSphere(camera, lighting, tankPosition) {
+        if (!this.tankMarkerSphere) return;
+        
+        const program = this.shaderManager.useProgram('phong');
+        if (!program) return;
+        
+        // 計算球體位置：坦克正上方80單位高度
+        const spherePosition = [tankPosition[0], 80, tankPosition[2]];
+        const modelMatrix = MatrixLib.translate(spherePosition[0], spherePosition[1], spherePosition[2]);
+        
+        // 設定變換矩陣
+        this.webglCore.setUniform(program, 'uModelMatrix', modelMatrix, 'mat4');
+        this.webglCore.setUniform(program, 'uViewMatrix', camera.getViewMatrix(), 'mat4');
+        this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
+        this.webglCore.setUniform(program, 'uNormalMatrix', MatrixLib.normalMatrix(modelMatrix), 'mat3');
+        this.webglCore.setUniform(program, 'uCameraPosition', camera.getPosition(), 'vec3');
+        
+        // 應用光照
+        if (lighting.applyToShader) {
+            lighting.applyToShader(this.webglCore, program, camera.getPosition());
+        }
+        
+        // 設定材質 - 簡單灰色，不使用紋理
+        this.webglCore.setUniform(program, 'uAmbientColor', this.markerSphereMaterial.ambient, 'vec3');
+        this.webglCore.setUniform(program, 'uDiffuseColor', this.markerSphereMaterial.diffuse, 'vec3');
+        this.webglCore.setUniform(program, 'uSpecularColor', this.markerSphereMaterial.specular, 'vec3');
+        this.webglCore.setUniform(program, 'uShininess', this.markerSphereMaterial.shininess, 'float');
+        this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        
+        this.renderGeometry(program, this.tankMarkerSphere);
+    }
+    
+    // 渲染坦克底部地板
+    renderTankFloor(camera, lighting, tankPosition) {
+        if (!this.tankFloorGeometry) return;
+        
+        const program = this.shaderManager.useProgram('phong');
+        if (!program) return;
+        
+        // 地板位置：坦克底部
+        const floorPosition = [tankPosition[0], 0, tankPosition[2]];
+        const modelMatrix = MatrixLib.translate(floorPosition[0], floorPosition[1], floorPosition[2]);
+        
+        // 設定變換矩陣
+        this.webglCore.setUniform(program, 'uModelMatrix', modelMatrix, 'mat4');
+        this.webglCore.setUniform(program, 'uViewMatrix', camera.getViewMatrix(), 'mat4');
+        this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
+        this.webglCore.setUniform(program, 'uNormalMatrix', MatrixLib.normalMatrix(modelMatrix), 'mat3');
+        this.webglCore.setUniform(program, 'uCameraPosition', camera.getPosition(), 'vec3');
+        
+        // 應用光照
+        if (lighting.applyToShader) {
+            lighting.applyToShader(this.webglCore, program, camera.getPosition());
+        }
+        
+        // 設定材質並使用 ground.jpg 紋理
+        this.webglCore.setUniform(program, 'uAmbientColor', this.floorMaterial.ambient, 'vec3');
+        this.webglCore.setUniform(program, 'uDiffuseColor', this.floorMaterial.diffuse, 'vec3');
+        this.webglCore.setUniform(program, 'uSpecularColor', this.floorMaterial.specular, 'vec3');
+        this.webglCore.setUniform(program, 'uShininess', this.floorMaterial.shininess, 'float');
+        
+        // 綁定 ground.jpg 紋理
+        if (this.textureManager) {
+            this.textureManager.bindTexture('ground', 0);
+            this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
+            this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
+        } else {
+            this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        }
+        
+        this.renderGeometry(program, this.tankFloorGeometry);
+    }
+    
     // 渲染場景
-    render(camera, lighting) {
+    render(camera, lighting, tankPosition = null) {
         // 首先渲染天空盒
         this.renderSkybox(camera);
         
@@ -322,8 +513,17 @@ class Scene {
         this.webglCore.setUniform(program, 'uViewMatrix', camera.getViewMatrix(), 'mat4');
         this.webglCore.setUniform(program, 'uProjectionMatrix', camera.getProjectionMatrix(), 'mat4');
         this.webglCore.setUniform(program, 'uCameraPosition', camera.getPosition(), 'vec3');
-        this.webglCore.setUniform(program, 'uLightPosition', lighting.position, 'vec3');
-        this.webglCore.setUniform(program, 'uLightColor', lighting.color, 'vec3');
+        
+        // 應用光照系統
+        if (lighting.applyToShader) {
+            lighting.applyToShader(this.webglCore, program, camera.getPosition());
+        } else {
+            // 後備光照設定
+            this.webglCore.setUniform(program, 'uLightPosition', lighting.position || [0, 500, 0], 'vec3');
+            this.webglCore.setUniform(program, 'uLightColor', lighting.color || [1.0, 1.0, 1.0], 'vec3');
+            this.webglCore.setUniform(program, 'uLightAttenuation', [1.0, 0.001, 0.000001], 'vec3');
+        }
+        
         this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
         
         // 渲染地板
@@ -334,6 +534,15 @@ class Scene {
         
         // 渲染天花板（半透明）
         this.renderCeiling(program);
+        
+        // 如果有坦克位置，渲染坦克相關物體
+        if (tankPosition) {
+            // 渲染坦克上方的球體標記
+            this.renderTankMarkerSphere(camera, lighting, tankPosition);
+            
+            // 渲染坦克底部的地板
+            this.renderTankFloor(camera, lighting, tankPosition);
+        }
     }
     
     // 渲染地板

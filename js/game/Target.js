@@ -235,15 +235,14 @@ class Target {
         this.updateMatrix();
     }
     
-    // 生成隨機位置
+    // 生成隨機位置 - 調整到坦克炮管高度
     generateRandomPosition() {
         const boundary = 700; // 場景邊界內
-        const minHeight = 30;  // 最小高度
-        const maxHeight = 200; // 最大高度
+        const tankBarrelHeight = 5.5; // 坦克炮管高度：底座4 + 砲座1.5
         
         return [
             (Math.random() - 0.5) * boundary * 2,
-            minHeight + Math.random() * (maxHeight - minHeight),
+            tankBarrelHeight, // 設置為與坦克炮管相同高度
             (Math.random() - 0.5) * boundary * 2
         ];
     }
@@ -389,15 +388,14 @@ class TargetManager {
         });
     }
     
-    // 生成隨機位置
+    // 生成隨機位置 - 調整到坦克炮管高度
     generateRandomPosition() {
         const boundary = 700; // 場景邊界內
-        const minHeight = 30;  // 最小高度（避免貼地）
-        const maxHeight = 200; // 最大高度
+        const tankBarrelHeight = 5.5; // 與坦克炮管相同高度
         
         return [
             (Math.random() - 0.5) * boundary * 2,
-            minHeight + Math.random() * (maxHeight - minHeight),
+            tankBarrelHeight, // 設置為與坦克炮管相同高度
             (Math.random() - 0.5) * boundary * 2
         ];
     }

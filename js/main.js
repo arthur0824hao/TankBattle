@@ -188,7 +188,10 @@ class TankBattleGame {
             
             // 環境紋理
             { name: 'ground', url: 'assets/textures/ground.jpg', type: 'texture' },
-            { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' }
+            { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' },
+            
+            // 目標紋理
+            { name: 'target_texture', url: 'assets/textures/target_texture.jpg', type: 'texture' }
         ];
         
         // 天空盒紋理（單獨處理）
@@ -446,13 +449,13 @@ class TankBattleGame {
         }
         
         // 渲染坦克
-        this.tank.render(this.camera, lightData);
+        this.tank.render(this.camera, lightData, this.textureManager);
         
         // 渲染砲彈
-        this.bulletManager.render(this.camera, lightData);
+        this.bulletManager.render(this.camera, lightData, this.textureManager);
         
         // 渲染目標
-        this.targetManager.render(this.camera, lightData);
+        this.targetManager.render(this.camera, lightData, this.textureManager);
         
         // 檢查 WebGL 錯誤（只在開發模式）
         if (window.DEBUG) {
