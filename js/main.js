@@ -123,9 +123,12 @@ class TankBattleGame {
     }
     
     // 初始化渲染系統
-    initRenderingSystems() {
+    async initRenderingSystems() {
         // 初始化紋理管理器
         this.textureManager = new TextureManager(this.webglCore);
+        
+        // 載入遊戲紋理
+        await this.loadGameTextures();
         
         // 初始化幀緩衝管理器
         this.frameBuffer = new FrameBuffer(this.webglCore, this.textureManager);
@@ -153,6 +156,82 @@ class TankBattleGame {
         });
         
         console.log('Rendering systems initialized');
+    }
+    
+    // 載入遊戲紋理
+    async loadGameTextures() {
+        console.log('Loading game textures...');
+        
+        // 定義要載入的紋理
+        const texturesToLoad = [
+            // 坦克紋理
+            { name: 'tankBase', url: 'assets/textures/tank_base.jpg', type: 'texture' },
+            { name: 'tankTurret', url: 'assets/textures/tank_turret.jpg', type: 'texture' },
+            { name: 'tankBarrel', url: 'assets/textures/tank_barrel.jpg', type: 'texture' },
+            
+            // 環境紋理
+            { name: 'ground', url: 'assets/textures/ground.jpg', type: 'texture' },
+            { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' },
+            
+            // 天空盒
+            {
+                name: 'skybox',
+                type: 'cubemap',
+                urls: [
+                    'assets/textures/skybox/px.jpg', // +X (右)
+                    'assets/textures/skybox/nx.jpg', // -X (左)
+                    'assets/textures/skybox/py.jpg', // +Y (上)
+                    'assets/textures/skybox/ny.jpg', // -Y (下)
+                    'assets/textures/skybox/pz.jpg', // +Z (前)
+                    'assets/textures/skybox/nz.jpg'  // -Z (後)
+                ]
+            }
+        ];
+        
+        try {
+            const results = await this.textureManager.loadTextures(texturesToLoad);
+            
+            // 檢查載入結果
+            const successful = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.filter(r => r.status === 'rejected').length;
+            
+            console.log(`Texture loading completed: ${successful} loaded, ${failed} failed`);
+            
+            // 為失敗的紋理創建程序化替代品
+            if (failed > 0) {
+                this.createFallbackTextures();
+            }
+            
+            // 顯示記憶體使用情況
+            const memStats = this.textureManager.getMemoryStats();
+            console.log(`Texture memory usage: ${memStats.totalMemoryMB.toFixed(2)} MB`);
+            
+        } catch (error) {
+            console.error('Error loading textures:', error);
+            // 使用程序化紋理作為後備
+            this.createFallbackTextures();
+        }
+    }
+    
+    // 創建後備程序化紋理
+    createFallbackTextures() {
+        console.log('Creating fallback procedural textures...');
+        
+        // 創建測試紋理
+        this.textureManager.createCheckerboardTexture('fallback_checker', 256, 32);
+        this.textureManager.createNoiseTexture('fallback_noise', 256);
+        
+        // 為坦克組件創建簡單顏色紋理
+        this.textureManager.createProceduralTexture('fallback_green', 64, 64, (data, w, h) => {
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = 50;      // R
+                data[i + 1] = 150; // G
+                data[i + 2] = 50;  // B
+                data[i + 3] = 255; // A
+            }
+        });
+        
+        console.log('Fallback textures created');
     }
     
     // 初始化遊戲物件
@@ -241,16 +320,17 @@ class TankBattleGame {
         const movement = this.inputHandler.getMovementInput();
         const actions = this.inputHandler.getActionInput();
         
-        // 除錯：顯示當前輸入狀態
-        console.log(`handleInput called - keyJustPressed size: ${this.inputHandler.keyJustPressed.size}`);
+        // 除錯：顯示當前輸入狀態 - 減少頻率
         if (this.inputHandler.keyJustPressed.size > 0) {
-            console.log('Current keyJustPressed:', Array.from(this.inputHandler.keyJustPressed));
+            console.log('=== HANDLE INPUT DEBUG ===');
+            console.log('keyJustPressed size:', this.inputHandler.keyJustPressed.size);
+            console.log('keyJustPressed contents:', Array.from(this.inputHandler.keyJustPressed));
+            console.log('actions object:', actions);
         }
         
-        // 強制檢查P鍵狀態
+        // P鍵視角切換處理
         if (actions.toggleView) {
             console.log('=== HANDLE INPUT: P KEY DETECTED ===');
-            console.log('actions object:', actions);
             console.log('Camera exists:', !!this.camera);
             
             if (this.camera) {
@@ -272,12 +352,6 @@ class TankBattleGame {
                 console.log('View mode message shown');
             } else {
                 console.error('Camera not initialized!');
-            }
-        } else {
-            // 顯示為什麼沒有觸發
-            if (this.inputHandler.keyJustPressed.has('p') || this.inputHandler.keyJustPressed.has('P')) {
-                console.log('P key in keyJustPressed but toggleView is false!');
-                console.log('Debug getActionInput result:', actions);
             }
         }
         

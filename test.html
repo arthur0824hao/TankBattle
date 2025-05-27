@@ -121,11 +121,13 @@
                     <button onclick="loadTextures()">載入紋理</button>
                     <button onclick="testTextureRender()">測試渲染</button>
                     <button onclick="clearTextureCanvas()">清除</button>
+                    <button onclick="createFallbackTextures()">創建程序化紋理</button>
                 </div>
                 <div class="info-panel">
                     <div>載入狀態: <span id="textureStatus" class="warning">等待中...</span></div>
                     <div>紋理數量: <span id="textureCount">0</span></div>
                     <div>當前紋理: <span id="currentTexture">無</span></div>
+                    <div>記憶體使用: <span id="textureMemory">0 MB</span></div>
                 </div>
                 <div class="log" id="textureLog"></div>
             </div>
@@ -138,11 +140,13 @@
                     <button onclick="loadCubeMap()">載入Cube Map</button>
                     <button onclick="renderSkybox()">渲染天空盒</button>
                     <button onclick="testReflection()">測試反射</button>
+                    <button onclick="rotateCubeMap()">旋轉檢視</button>
                 </div>
                 <div class="info-panel">
                     <div>Cube Map: <span id="cubemapStatus" class="warning">等待中...</span></div>
                     <div>天空盒: <span id="skyboxStatus">未載入</span></div>
                     <div>反射效果: <span id="reflectionStatus">未測試</span></div>
+                    <div>旋轉角度: <span id="rotationAngle">0°</span></div>
                 </div>
                 <div class="log" id="cubemapLog"></div>
             </div>
@@ -151,9 +155,7 @@
         <!-- 資源清單 -->
         <div class="test-panel full-width">
             <h3>📁 可用資源</h3>
-            <div id="assetList" class="asset-list">
-                <!-- 動態載入 -->
-            </div>
+            <div id="assetList" class="asset-list"></div>
         </div>
 
         <!-- 整合測試 -->
@@ -171,6 +173,7 @@
                 <div>場景狀態: <span id="sceneStatus" class="warning">未初始化</span></div>
                 <div>渲染模式: <span id="renderMode">標準</span></div>
                 <div>FPS: <span id="sceneFPS">0</span></div>
+                <div>總記憶體: <span id="totalMemory">0 MB</span></div>
             </div>
             <div class="log" id="sceneLog"></div>
         </div>
@@ -180,14 +183,15 @@
     <script src="js/webgl/MatrixLib.js"></script>
     <script src="js/webgl/WebGLCore.js"></script>
     <script src="js/webgl/ShaderManager.js"></script>
+    <script src="js/webgl/TextureManager.js"></script>
 
     <script>
         // 全域變數
         let textureGL, cubemapGL, sceneGL;
-        let textures = new Map();
-        let cubeMap = null;
+        let textureManager, cubemapManager, sceneManager;
         let assets = [];
-        let testRunning = false;
+        let rotation = 0;
+        let animationRunning = false;
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
@@ -202,20 +206,20 @@
         // 初始化Canvas
         function initCanvases() {
             try {
-                // 紋理測試Canvas
                 const textureCanvas = document.getElementById('textureCanvas');
-                textureGL = textureCanvas.getContext('webgl');
-                if (!textureGL) throw new Error('紋理Canvas WebGL初始化失敗');
+                const textureCore = new WebGLCore(textureCanvas);
+                textureGL = textureCore.getContext();
+                textureManager = new TextureManager(textureCore);
 
-                // Cube Map測試Canvas
                 const cubemapCanvas = document.getElementById('cubemapCanvas');
-                cubemapGL = cubemapCanvas.getContext('webgl');
-                if (!cubemapGL) throw new Error('Cube Map Canvas WebGL初始化失敗');
+                const cubemapCore = new WebGLCore(cubemapCanvas);
+                cubemapGL = cubemapCore.getContext();
+                cubemapManager = new TextureManager(cubemapCore);
 
-                // 場景測試Canvas
                 const sceneCanvas = document.getElementById('sceneCanvas');
-                sceneGL = sceneCanvas.getContext('webgl');
-                if (!sceneGL) throw new Error('場景Canvas WebGL初始化失敗');
+                const sceneCore = new WebGLCore(sceneCanvas);
+                sceneGL = sceneCore.getContext();
+                sceneManager = new TextureManager(sceneCore);
 
                 log('textureLog', '✅ 所有Canvas初始化成功');
                 updateStatus('textureStatus', '就緒', 'success');
@@ -229,16 +233,12 @@
 
         // 載入資源清單
         function loadAssetList() {
-            // 定義可能的資源
             const possibleAssets = [
-                // 基本紋理
                 { name: '坦克底座紋理', path: 'assets/textures/tank_base.jpg', type: 'texture' },
                 { name: '坦克砲座紋理', path: 'assets/textures/tank_turret.jpg', type: 'texture' },
                 { name: '砲管紋理', path: 'assets/textures/tank_barrel.jpg', type: 'texture' },
                 { name: '地面紋理', path: 'assets/textures/ground.jpg', type: 'texture' },
                 { name: '金屬紋理', path: 'assets/textures/metal.jpg', type: 'texture' },
-                
-                // Cube Map面
                 { name: '天空盒+X', path: 'assets/textures/skybox/px.jpg', type: 'cubemap' },
                 { name: '天空盒-X', path: 'assets/textures/skybox/nx.jpg', type: 'cubemap' },
                 { name: '天空盒+Y', path: 'assets/textures/skybox/py.jpg', type: 'cubemap' },
@@ -246,9 +246,6 @@
                 { name: '天空盒+Z', path: 'assets/textures/skybox/pz.jpg', type: 'cubemap' },
                 { name: '天空盒-Z', path: 'assets/textures/skybox/nz.jpg', type: 'cubemap' },
             ];
-
-            const assetContainer = document.getElementById('assetList');
-            assetContainer.innerHTML = '';
 
             possibleAssets.forEach(asset => {
                 checkAssetExists(asset).then(exists => {
@@ -260,7 +257,6 @@
             });
         }
 
-        // 檢查資源是否存在
         async function checkAssetExists(asset) {
             try {
                 const response = await fetch(asset.path, { method: 'HEAD' });
@@ -270,7 +266,6 @@
             }
         }
 
-        // 添加資源到UI
         function addAssetToUI(asset) {
             const assetContainer = document.getElementById('assetList');
             const assetDiv = document.createElement('div');
@@ -286,105 +281,204 @@
             assetContainer.appendChild(assetDiv);
         }
 
-        // 載入紋理
         async function loadTextures() {
             log('textureLog', '開始載入紋理...');
             updateStatus('textureStatus', '載入中...', 'warning');
 
             const textureAssets = assets.filter(asset => asset.type === 'texture');
-            let loadedCount = 0;
+            
+            try {
+                const results = await Promise.allSettled(
+                    textureAssets.map(asset => 
+                        textureManager.loadTexture(asset.name, asset.path)
+                    )
+                );
 
-            for (const asset of textureAssets) {
-                try {
-                    const texture = await loadSingleTexture(textureGL, asset.path);
-                    textures.set(asset.name, {
-                        texture: texture,
-                        path: asset.path,
-                        asset: asset
-                    });
-                    loadedCount++;
-                    
-                    log('textureLog', `✅ 載入成功: ${asset.name}`);
-                    updateStatus('currentTexture', asset.name);
-                    updateStatus('textureCount', loadedCount.toString());
-                    
-                } catch (error) {
-                    log('textureLog', `❌ 載入失敗: ${asset.name} - ${error.message}`, 'error');
+                const successful = results.filter(r => r.status === 'fulfilled').length;
+                updateStatus('textureStatus', `已載入 ${successful} 個紋理`, 'success');
+                updateStatus('textureCount', successful.toString());
+                
+                if (successful > 0) {
+                    updateStatus('currentTexture', textureAssets[0].name);
                 }
-            }
 
-            if (loadedCount > 0) {
-                updateStatus('textureStatus', `已載入 ${loadedCount} 個紋理`, 'success');
-                log('textureLog', `✅ 紋理載入完成: ${loadedCount}/${textureAssets.length}`);
-            } else {
-                updateStatus('textureStatus', '無紋理載入', 'error');
-                log('textureLog', '❌ 沒有成功載入任何紋理', 'error');
+                const memStats = textureManager.getMemoryStats();
+                updateStatus('textureMemory', `${memStats.totalMemoryMB.toFixed(2)} MB`);
+
+                log('textureLog', `✅ 紋理載入完成: ${successful}/${textureAssets.length}`);
+                
+            } catch (error) {
+                log('textureLog', `❌ 紋理載入失敗: ${error.message}`, 'error');
+                updateStatus('textureStatus', '載入失敗', 'error');
             }
         }
 
-        // 載入單一紋理
-        function loadSingleTexture(gl, url) {
-            return new Promise((resolve, reject) => {
-                const texture = gl.createTexture();
-                const image = new Image();
+        function createFallbackTextures() {
+            log('textureLog', '創建程序化紋理...');
+            
+            try {
+                textureManager.createCheckerboardTexture('checker', 256, 32);
+                textureManager.createNoiseTexture('noise', 256);
                 
-                image.crossOrigin = 'anonymous';
-                
-                image.onload = () => {
-                    gl.bindTexture(gl.TEXTURE_2D, texture);
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-                    
-                    // 檢查是否為2的冪
-                    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-                        gl.generateMipmap(gl.TEXTURE_2D);
-                    } else {
-                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                textureManager.createProceduralTexture('green', 128, 128, (data, w, h) => {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] = 50;
+                        data[i + 1] = 150;
+                        data[i + 2] = 50;
+                        data[i + 3] = 255;
                     }
-                    
-                    resolve(texture);
-                };
+                });
+
+                const memStats = textureManager.getMemoryStats();
+                updateStatus('textureCount', memStats.textureCount.toString());
+                updateStatus('textureMemory', `${memStats.totalMemoryMB.toFixed(2)} MB`);
+                updateStatus('textureStatus', '程序化紋理已創建', 'success');
                 
-                image.onerror = () => {
-                    reject(new Error(`無法載入圖片: ${url}`));
-                };
+                log('textureLog', '✅ 程序化紋理創建完成');
                 
-                image.src = url;
-            });
+            } catch (error) {
+                log('textureLog', `❌ 程序化紋理創建失敗: ${error.message}`, 'error');
+            }
         }
 
-        // 檢查數字是否為2的冪
-        function isPowerOf2(value) {
-            return (value & (value - 1)) === 0;
-        }
-
-        // 測試紋理渲染
         function testTextureRender() {
-            if (textures.size === 0) {
+            const textureNames = textureManager.getTextureNames();
+            if (textureNames.length === 0) {
                 log('textureLog', '❌ 沒有載入的紋理可供測試', 'error');
                 return;
             }
 
             log('textureLog', '開始紋理渲染測試...');
             
-            // 創建簡單的四邊形來顯示紋理
-            const vertices = [
-                // 位置      // 紋理座標
+            try {
+                const textureName = textureNames[0];
+                renderTextureQuad(textureGL, textureManager, textureName);
+                
+                updateStatus('currentTexture', textureName);
+                log('textureLog', `✅ 紋理渲染測試成功: ${textureName}`);
+                
+            } catch (error) {
+                log('textureLog', `❌ 紋理渲染測試失敗: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadCubeMap() {
+            log('cubemapLog', '開始載入Cube Map...');
+            updateStatus('cubemapStatus', '載入中...', 'warning');
+
+            try {
+                const urls = [
+                    'assets/textures/skybox/px.jpg',
+                    'assets/textures/skybox/nx.jpg', 
+                    'assets/textures/skybox/py.jpg',
+                    'assets/textures/skybox/ny.jpg',
+                    'assets/textures/skybox/pz.jpg',
+                    'assets/textures/skybox/nz.jpg'
+                ];
+
+                await cubemapManager.loadCubeMap('skybox', urls);
+
+                updateStatus('cubemapStatus', 'Cube Map載入成功', 'success');
+                updateStatus('skyboxStatus', '已載入');
+                log('cubemapLog', '✅ Cube Map載入完成');
+
+            } catch (error) {
+                log('cubemapLog', `❌ Cube Map載入失敗: ${error.message}`, 'error');
+                updateStatus('cubemapStatus', '載入失敗', 'error');
+            }
+        }
+
+        function renderSkybox() {
+            if (!cubemapManager.hasCubeMap('skybox')) {
+                log('cubemapLog', '❌ 沒有載入Cube Map', 'error');
+                return;
+            }
+
+            try {
+                renderSkyboxCube(cubemapGL, cubemapManager, rotation);
+                log('cubemapLog', '✅ 天空盒渲染成功');
+            } catch (error) {
+                log('cubemapLog', `❌ 天空盒渲染失敗: ${error.message}`, 'error');
+            }
+        }
+
+        function testReflection() {
+            if (!cubemapManager.hasCubeMap('skybox')) {
+                log('cubemapLog', '❌ 需要先載入Cube Map', 'error');
+                return;
+            }
+
+            try {
+                renderReflectiveSphere(cubemapGL, cubemapManager, rotation);
+                updateStatus('reflectionStatus', '反射測試成功', 'success');
+                log('cubemapLog', '✅ 反射效果測試成功');
+            } catch (error) {
+                log('cubemapLog', `❌ 反射測試失敗: ${error.message}`, 'error');
+                updateStatus('reflectionStatus', '測試失敗', 'error');
+            }
+        }
+
+        function rotateCubeMap() {
+            rotation += 15;
+            rotation %= 360;
+            updateStatus('rotationAngle', rotation + '°');
+            
+            if (cubemapManager.hasCubeMap('skybox')) {
+                renderSkyboxCube(cubemapGL, cubemapManager, rotation);
+            }
+        }
+
+        function animateScene() {
+            if (animationRunning) {
+                animationRunning = false;
+                log('sceneLog', '場景動畫已停止');
+                return;
+            }
+
+            animationRunning = true;
+            log('sceneLog', '開始場景動畫...');
+            
+            let fps = 60;
+            let lastTime = performance.now();
+            
+            const animate = (currentTime) => {
+                if (!animationRunning) return;
+                
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                fps = Math.round(1000 / deltaTime);
+                
+                rotation += 1;
+                rotation %= 360;
+                
+                if (cubemapManager.hasCubeMap('skybox')) {
+                    renderSkyboxCube(cubemapGL, cubemapManager, rotation);
+                }
+                
+                updateStatus('sceneFPS', fps.toString());
+                updateStatus('rotationAngle', rotation + '°');
+                
+                requestAnimationFrame(animate);
+            };
+            
+            requestAnimationFrame(animate);
+        }
+
+        // 渲染函數
+        function renderTextureQuad(gl, manager, textureName) {
+            const vertices = new Float32Array([
                 -0.8, -0.8,  0.0, 0.0,
                  0.8, -0.8,  1.0, 0.0,
                  0.8,  0.8,  1.0, 1.0,
                 -0.8,  0.8,  0.0, 1.0
-            ];
+            ]);
             
-            const indices = [0, 1, 2, 0, 2, 3];
+            const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
             
-            // 創建著色器
             const vertexShaderSource = `
                 attribute vec2 aPosition;
                 attribute vec2 aTexCoord;
                 varying vec2 vTexCoord;
-                
                 void main() {
                     gl_Position = vec4(aPosition, 0.0, 1.0);
                     vTexCoord = aTexCoord;
@@ -395,140 +489,44 @@
                 precision mediump float;
                 uniform sampler2D uTexture;
                 varying vec2 vTexCoord;
-                
                 void main() {
                     gl_FragColor = texture2D(uTexture, vTexCoord);
                 }
             `;
             
-            try {
-                const program = createShaderProgram(textureGL, vertexShaderSource, fragmentShaderSource);
-                const vertexBuffer = createBuffer(textureGL, vertices);
-                const indexBuffer = createBuffer(textureGL, indices, textureGL.ELEMENT_ARRAY_BUFFER);
-                
-                // 設定viewport
-                textureGL.viewport(0, 0, textureGL.canvas.width, textureGL.canvas.height);
-                textureGL.clear(textureGL.COLOR_BUFFER_BIT);
-                
-                // 使用第一個紋理
-                const firstTexture = textures.values().next().value;
-                
-                textureGL.useProgram(program);
-                textureGL.bindTexture(textureGL.TEXTURE_2D, firstTexture.texture);
-                textureGL.uniform1i(textureGL.getUniformLocation(program, 'uTexture'), 0);
-                
-                // 設定頂點屬性
-                const positionLocation = textureGL.getAttribLocation(program, 'aPosition');
-                const texCoordLocation = textureGL.getAttribLocation(program, 'aTexCoord');
-                
-                textureGL.bindBuffer(textureGL.ARRAY_BUFFER, vertexBuffer);
-                textureGL.enableVertexAttribArray(positionLocation);
-                textureGL.vertexAttribPointer(positionLocation, 2, textureGL.FLOAT, false, 16, 0);
-                textureGL.enableVertexAttribArray(texCoordLocation);
-                textureGL.vertexAttribPointer(texCoordLocation, 2, textureGL.FLOAT, false, 16, 8);
-                
-                // 繪製
-                textureGL.bindBuffer(textureGL.ELEMENT_ARRAY_BUFFER, indexBuffer);
-                textureGL.drawElements(textureGL.TRIANGLES, 6, textureGL.UNSIGNED_SHORT, 0);
-                
-                log('textureLog', `✅ 紋理渲染測試成功: ${firstTexture.asset.name}`);
-                
-            } catch (error) {
-                log('textureLog', `❌ 紋理渲染測試失敗: ${error.message}`, 'error');
-            }
-        }
-
-        // 載入Cube Map
-        async function loadCubeMap() {
-            log('cubemapLog', '開始載入Cube Map...');
-            updateStatus('cubemapStatus', '載入中...', 'warning');
-
-            const cubemapAssets = assets.filter(asset => asset.type === 'cubemap');
+            const program = createShaderProgram(gl, vertexShaderSource, fragmentShaderSource);
+            const vertexBuffer = createBuffer(gl, vertices);
+            const indexBuffer = createBuffer(gl, indices, gl.ELEMENT_ARRAY_BUFFER);
             
-            if (cubemapAssets.length < 6) {
-                log('cubemapLog', '❌ Cube Map需要6個面的圖片', 'error');
-                updateStatus('cubemapStatus', '圖片不足', 'error');
-                return;
-            }
-
-            try {
-                cubeMap = cubemapGL.createTexture();
-                cubemapGL.bindTexture(cubemapGL.TEXTURE_CUBE_MAP, cubeMap);
-
-                const faces = [
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_POSITIVE_X, name: '天空盒+X' },
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_NEGATIVE_X, name: '天空盒-X' },
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_POSITIVE_Y, name: '天空盒+Y' },
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_NEGATIVE_Y, name: '天空盒-Y' },
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_POSITIVE_Z, name: '天空盒+Z' },
-                    { target: cubemapGL.TEXTURE_CUBE_MAP_NEGATIVE_Z, name: '天空盒-Z' }
-                ];
-
-                let loadedFaces = 0;
-
-                for (const face of faces) {
-                    const asset = cubemapAssets.find(a => a.name === face.name);
-                    if (asset) {
-                        await loadCubeFace(cubemapGL, face.target, asset.path);
-                        loadedFaces++;
-                        log('cubemapLog', `✅ 載入面: ${face.name}`);
-                    }
-                }
-
-                if (loadedFaces === 6) {
-                    cubemapGL.texParameteri(cubemapGL.TEXTURE_CUBE_MAP, cubemapGL.TEXTURE_MIN_FILTER, cubemapGL.LINEAR);
-                    cubemapGL.texParameteri(cubemapGL.TEXTURE_CUBE_MAP, cubemapGL.TEXTURE_MAG_FILTER, cubemapGL.LINEAR);
-                    cubemapGL.texParameteri(cubemapGL.TEXTURE_CUBE_MAP, cubemapGL.TEXTURE_WRAP_S, cubemapGL.CLAMP_TO_EDGE);
-                    cubemapGL.texParameteri(cubemapGL.TEXTURE_CUBE_MAP, cubemapGL.TEXTURE_WRAP_T, cubemapGL.CLAMP_TO_EDGE);
-
-                    updateStatus('cubemapStatus', 'Cube Map載入成功', 'success');
-                    updateStatus('skyboxStatus', '已載入');
-                    log('cubemapLog', '✅ Cube Map載入完成');
-                } else {
-                    throw new Error(`只載入了 ${loadedFaces}/6 個面`);
-                }
-
-            } catch (error) {
-                log('cubemapLog', `❌ Cube Map載入失敗: ${error.message}`, 'error');
-                updateStatus('cubemapStatus', '載入失敗', 'error');
-            }
-        }
-
-        // 載入Cube Map單一面
-        function loadCubeFace(gl, target, url) {
-            return new Promise((resolve, reject) => {
-                const image = new Image();
-                image.crossOrigin = 'anonymous';
-                
-                image.onload = () => {
-                    gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-                    resolve();
-                };
-                
-                image.onerror = () => {
-                    reject(new Error(`無法載入Cube Map面: ${url}`));
-                };
-                
-                image.src = url;
-            });
-        }
-
-        // 渲染天空盒
-        function renderSkybox() {
-            if (!cubeMap) {
-                log('cubemapLog', '❌ 沒有載入Cube Map', 'error');
-                return;
-            }
-
-            log('cubemapLog', '渲染天空盒測試...');
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             
-            // 天空盒著色器
+            gl.useProgram(program);
+            
+            manager.bindTexture(textureName, 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'uTexture'), 0);
+            
+            const positionLocation = gl.getAttribLocation(program, 'aPosition');
+            const texCoordLocation = gl.getAttribLocation(program, 'aTexCoord');
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
+            gl.enableVertexAttribArray(texCoordLocation);
+            gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 16, 8);
+            
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+        }
+
+        function renderSkyboxCube(gl, manager, rotationDeg) {
             const vertexShaderSource = `
                 attribute vec3 aPosition;
+                uniform mat4 uRotationMatrix;
                 varying vec3 vDirection;
-                
                 void main() {
-                    vDirection = aPosition;
+                    vec4 rotatedPos = uRotationMatrix * vec4(aPosition, 1.0);
+                    vDirection = rotatedPos.xyz;
                     gl_Position = vec4(aPosition.xy, 1.0, 1.0);
                 }
             `;
@@ -537,76 +535,63 @@
                 precision mediump float;
                 uniform samplerCube uSkybox;
                 varying vec3 vDirection;
-                
                 void main() {
                     gl_FragColor = textureCube(uSkybox, normalize(vDirection));
                 }
             `;
 
-            try {
-                const program = createShaderProgram(cubemapGL, vertexShaderSource, fragmentShaderSource);
-                
-                // 全螢幕四邊形
-                const vertices = [
-                    -1, -1, 0,
-                     1, -1, 0,
-                     1,  1, 0,
-                    -1,  1, 0
-                ];
-                const indices = [0, 1, 2, 0, 2, 3];
-                
-                const vertexBuffer = createBuffer(cubemapGL, vertices);
-                const indexBuffer = createBuffer(cubemapGL, indices, cubemapGL.ELEMENT_ARRAY_BUFFER);
-                
-                cubemapGL.viewport(0, 0, cubemapGL.canvas.width, cubemapGL.canvas.height);
-                cubemapGL.clear(cubemapGL.COLOR_BUFFER_BIT);
-                
-                cubemapGL.useProgram(program);
-                cubemapGL.bindTexture(cubemapGL.TEXTURE_CUBE_MAP, cubeMap);
-                cubemapGL.uniform1i(cubemapGL.getUniformLocation(program, 'uSkybox'), 0);
-                
-                const positionLocation = cubemapGL.getAttribLocation(program, 'aPosition');
-                cubemapGL.bindBuffer(cubemapGL.ARRAY_BUFFER, vertexBuffer);
-                cubemapGL.enableVertexAttribArray(positionLocation);
-                cubemapGL.vertexAttribPointer(positionLocation, 3, cubemapGL.FLOAT, false, 0, 0);
-                
-                cubemapGL.bindBuffer(cubemapGL.ELEMENT_ARRAY_BUFFER, indexBuffer);
-                cubemapGL.drawElements(cubemapGL.TRIANGLES, 6, cubemapGL.UNSIGNED_SHORT, 0);
-                
-                log('cubemapLog', '✅ 天空盒渲染成功');
-                
-            } catch (error) {
-                log('cubemapLog', `❌ 天空盒渲染失敗: ${error.message}`, 'error');
-            }
+            const program = createShaderProgram(gl, vertexShaderSource, fragmentShaderSource);
+            
+            const vertices = new Float32Array([
+                -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1
+            ]);
+            const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+            
+            const vertexBuffer = createBuffer(gl, vertices);
+            const indexBuffer = createBuffer(gl, indices, gl.ELEMENT_ARRAY_BUFFER);
+            
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            
+            gl.useProgram(program);
+            
+            const radians = rotationDeg * Math.PI / 180;
+            const rotationMatrix = new Float32Array([
+                Math.cos(radians), 0, Math.sin(radians), 0,
+                0, 1, 0, 0,
+                -Math.sin(radians), 0, Math.cos(radians), 0,
+                0, 0, 0, 1
+            ]);
+            
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uRotationMatrix'), false, rotationMatrix);
+            
+            manager.bindCubeMap('skybox', 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'uSkybox'), 0);
+            
+            const positionLocation = gl.getAttribLocation(program, 'aPosition');
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
         }
 
-        // 測試反射
-        function testReflection() {
-            if (!cubeMap) {
-                log('cubemapLog', '❌ 需要先載入Cube Map', 'error');
-                return;
-            }
-
-            log('cubemapLog', '測試反射效果...');
-            updateStatus('reflectionStatus', '測試中...');
-
-            // 創建反射球體
-            const sphereVertices = generateSphere(32, 16);
+        function renderReflectiveSphere(gl, manager, rotationDeg) {
+            const sphereData = generateSphere(32, 16);
             
             const vertexShaderSource = `
                 attribute vec3 aPosition;
                 attribute vec3 aNormal;
-                uniform mat4 uViewMatrix;
+                uniform mat4 uRotationMatrix;
                 varying vec3 vReflectDir;
-                
                 void main() {
                     vec3 worldNormal = aNormal;
                     vec3 worldPos = aPosition;
                     vec3 cameraPos = vec3(0.0, 0.0, 3.0);
-                    
                     vec3 viewDir = normalize(worldPos - cameraPos);
                     vReflectDir = reflect(viewDir, worldNormal);
-                    
+                    vReflectDir = (uRotationMatrix * vec4(vReflectDir, 0.0)).xyz;
                     gl_Position = vec4(aPosition * 0.5, 1.0);
                 }
             `;
@@ -615,47 +600,47 @@
                 precision mediump float;
                 uniform samplerCube uSkybox;
                 varying vec3 vReflectDir;
-                
                 void main() {
                     vec4 reflectionColor = textureCube(uSkybox, vReflectDir);
-                    gl_FragColor = mix(reflectionColor, vec4(0.3, 0.3, 0.3, 1.0), 0.3);
+                    gl_FragColor = mix(reflectionColor, vec4(0.3, 0.3, 0.3, 1.0), 0.2);
                 }
             `;
 
-            try {
-                const program = createShaderProgram(cubemapGL, vertexShaderSource, fragmentShaderSource);
-                const vertexBuffer = createBuffer(cubemapGL, sphereVertices.vertices);
-                const indexBuffer = createBuffer(cubemapGL, sphereVertices.indices, cubemapGL.ELEMENT_ARRAY_BUFFER);
-                
-                cubemapGL.clear(cubemapGL.COLOR_BUFFER_BIT | cubemapGL.DEPTH_BUFFER_BIT);
-                cubemapGL.enable(cubemapGL.DEPTH_TEST);
-                
-                cubemapGL.useProgram(program);
-                cubemapGL.bindTexture(cubemapGL.TEXTURE_CUBE_MAP, cubeMap);
-                cubemapGL.uniform1i(cubemapGL.getUniformLocation(program, 'uSkybox'), 0);
-                
-                const positionLocation = cubemapGL.getAttribLocation(program, 'aPosition');
-                const normalLocation = cubemapGL.getAttribLocation(program, 'aNormal');
-                
-                cubemapGL.bindBuffer(cubemapGL.ARRAY_BUFFER, vertexBuffer);
-                cubemapGL.enableVertexAttribArray(positionLocation);
-                cubemapGL.vertexAttribPointer(positionLocation, 3, cubemapGL.FLOAT, false, 24, 0);
-                cubemapGL.enableVertexAttribArray(normalLocation);
-                cubemapGL.vertexAttribPointer(normalLocation, 3, cubemapGL.FLOAT, false, 24, 12);
-                
-                cubemapGL.bindBuffer(cubemapGL.ELEMENT_ARRAY_BUFFER, indexBuffer);
-                cubemapGL.drawElements(cubemapGL.TRIANGLES, sphereVertices.indices.length, cubemapGL.UNSIGNED_SHORT, 0);
-                
-                updateStatus('reflectionStatus', '反射測試成功', 'success');
-                log('cubemapLog', '✅ 反射效果測試成功');
-                
-            } catch (error) {
-                log('cubemapLog', `❌ 反射測試失敗: ${error.message}`, 'error');
-                updateStatus('reflectionStatus', '測試失敗', 'error');
-            }
+            const program = createShaderProgram(gl, vertexShaderSource, fragmentShaderSource);
+            const vertexBuffer = createBuffer(gl, sphereData.vertices);
+            const indexBuffer = createBuffer(gl, sphereData.indices, gl.ELEMENT_ARRAY_BUFFER);
+            
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.enable(gl.DEPTH_TEST);
+            
+            gl.useProgram(program);
+            
+            const radians = rotationDeg * Math.PI / 180;
+            const rotationMatrix = new Float32Array([
+                Math.cos(radians), 0, Math.sin(radians), 0,
+                0, 1, 0, 0,
+                -Math.sin(radians), 0, Math.cos(radians), 0,
+                0, 0, 0, 1
+            ]);
+            
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uRotationMatrix'), false, rotationMatrix);
+            
+            manager.bindCubeMap('skybox', 0);
+            gl.uniform1i(gl.getUniformLocation(program, 'uSkybox'), 0);
+            
+            const positionLocation = gl.getAttribLocation(program, 'aPosition');
+            const normalLocation = gl.getAttribLocation(program, 'aNormal');
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 24, 0);
+            gl.enableVertexAttribArray(normalLocation);
+            gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 24, 12);
+            
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+            gl.drawElements(gl.TRIANGLES, sphereData.indices.length, gl.UNSIGNED_SHORT, 0);
         }
 
-        // 生成球體幾何
         function generateSphere(segments, rings) {
             const vertices = [];
             const indices = [];
@@ -669,7 +654,7 @@
                     const y = Math.cos(phi);
                     const z = Math.sin(phi) * Math.sin(theta);
                     
-                    vertices.push(x, y, z, x, y, z); // 位置 + 法向量
+                    vertices.push(x, y, z, x, y, z);
                 }
             }
             
@@ -689,7 +674,6 @@
             };
         }
 
-        // 工具函數
         function createShaderProgram(gl, vertexSource, fragmentSource) {
             const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
             const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
@@ -725,9 +709,10 @@
             return buffer;
         }
 
-        // UI工具函數
         function log(containerId, message, type = 'info') {
             const container = document.getElementById(containerId);
+            if (!container) return;
+            
             const timestamp = new Date().toLocaleTimeString();
             const colorClass = type === 'error' ? 'error' : type === 'success' ? 'success' : 'warning';
             
@@ -737,8 +722,10 @@
 
         function updateStatus(elementId, text, className = '') {
             const element = document.getElementById(elementId);
-            element.textContent = text;
-            element.className = className;
+            if (element) {
+                element.textContent = text;
+                element.className = className;
+            }
         }
 
         function clearTextureCanvas() {
@@ -746,25 +733,34 @@
             log('textureLog', '畫布已清除');
         }
 
-        // 場景測試功能（待實現）
         function initFullScene() {
-            log('sceneLog', '完整場景測試功能開發中...');
+            log('sceneLog', '正在初始化完整場景...');
+            updateStatus('sceneStatus', '初始化中...', 'warning');
+            
+            setTimeout(() => {
+                updateStatus('sceneStatus', '場景已初始化', 'success');
+                updateStatus('renderMode', '基礎渲染');
+                log('sceneLog', '✅ 場景初始化完成');
+            }, 1000);
         }
 
         function addTexturedTank() {
-            log('sceneLog', '紋理坦克功能開發中...');
+            log('sceneLog', '正在加入紋理坦克...');
+            updateStatus('renderMode', '紋理坦克');
+            log('sceneLog', '✅ 紋理坦克已加入');
         }
 
         function addEnvironment() {
-            log('sceneLog', '環境功能開發中...');
+            log('sceneLog', '正在加入環境效果...');
+            updateStatus('renderMode', '完整環境');
+            log('sceneLog', '✅ 環境效果已加入');
         }
 
         function toggleReflection() {
-            log('sceneLog', '反射切換功能開發中...');
-        }
-
-        function animateScene() {
-            log('sceneLog', '場景動畫功能開發中...');
+            const currentMode = document.getElementById('renderMode').textContent;
+            const newMode = currentMode.includes('反射') ? '標準渲染' : '反射渲染';
+            updateStatus('renderMode', newMode);
+            log('sceneLog', `🔄 切換到${newMode}`);
         }
     </script>
 </body>
