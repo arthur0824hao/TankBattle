@@ -320,6 +320,24 @@ class TextureManager {
         
         return unit;
     }
+
+    // 綁定Cube Map到指定紋理單元
+    bindCubeMap(name, textureUnit = 0) {
+        const cubeMap = this.cubeMaps.get(name);
+        if (cubeMap) {
+            this.gl.activeTexture(this.gl.TEXTURE0 + textureUnit);
+            this.gl.bindTexture(this.gl.TEXTURE_CUBE_MAP, cubeMap);
+            return true;
+        } else {
+            console.warn(`Cube map '${name}' not found`);
+            return false;
+        }
+    }
+
+    // 獲取Cube Map
+    getCubeMap(name) {
+        return this.cubeMaps.get(name);
+    }
     
     // 創建空的 2D 紋理（用於 FBO）
     createEmptyTexture(width, height, format = null, type = null) {

@@ -120,7 +120,7 @@ class TankBattleGame {
                 console.log('Game state changed:', state);
             },
             onTargetHit: (hitData) => {
-                console.log('Target hit:', hitData);
+                console.log('Target hit:', hitData)                
                 if (this.ui) {
                     this.ui.showTargetHitMessage(hitData.targetType);
                 }
@@ -153,10 +153,50 @@ class TankBattleGame {
         // 創建砲彈管理器
         this.bulletManager = new BulletManager(this.webglCore, this.shaderManager);
         
-        // 創建目標管理器
+        // 創建目標管理器（支援隨機距離生成）
         this.targetManager = new TargetManager(this.webglCore, this.shaderManager);
         
-        console.log('Game objects created');
+        // 創建碰撞管理器
+        this.collisionManager = new CollisionManager();
+        
+        // 設定砲彈管理器的即時碰撞檢測
+        this.bulletManager.setTargetManager(this.targetManager);
+        this.bulletManager.setOnHitCallback((hitData) => {
+            // 即時命中處理
+            this.handleImmediateHit(hitData);
+        });
+        
+        // 創建鏡面球（固定在場景中央）
+        this.mirrorBall = new MirrorBall(this.webglCore, this.shaderManager);
+        
+        console.log('Game objects created with immediate hit detection');
+    }
+    
+    // 即時命中處理
+    handleImmediateHit(hitData) {
+        console.log(`🎯 IMMEDIATE HIT PROCESSED: ${hitData.targetType} (${hitData.targetId})`);
+        
+        // 立即更新UI
+        if (this.ui) {
+            this.ui.showTargetHitMessage(hitData.targetType);
+        }
+        
+        // 立即更新遊戲管理器
+        if (this.gameManager && this.gameManager.onTargetHit) {
+            this.gameManager.onTargetHit(hitData);
+        }
+        
+        // 即時音效或視覺效果（如果有的話）
+        this.playHitEffect(hitData);
+    }
+    
+    // 播放命中效果
+    playHitEffect(hitData) {
+        // 這裡可以添加粒子效果、音效等
+        console.log(`✨ Hit effect for ${hitData.targetType}`);
+        
+        // 例如：閃爍效果、粒子爆炸等
+        // (暫時只有console log)
     }
     
     // 初始化渲染系統
@@ -419,20 +459,41 @@ class TankBattleGame {
         // 更新攝影機
         this.camera.update();
         
-        // 更新砲彈
+        // 更新砲彈（內建即時命中處理）
         this.bulletManager.update(this.deltaTime);
         
         // 更新目標
         this.targetManager.update(this.deltaTime);
         
-        // 檢查碰撞
-        this.checkCollisions();
+        // 更新鏡面球
+        if (this.mirrorBall) {
+            this.mirrorBall.update(this.deltaTime);
+        }
+        
+        // 檢查其他碰撞（target重疊等，非緊急）
+        this.checkNonCriticalCollisions();
         
         // 更新遊戲管理器
         this.gameManager.update(this.deltaTime);
         
         // 更新陰影投射物件列表
         this.updateShadowCasters();
+    }
+    
+    // 檢查非關鍵碰撞（重疊等）
+    checkNonCriticalCollisions() {
+        if (!this.collisionManager || !this.targetManager) return;
+        
+        // 只檢查target間重疊，砲彈命中已在bulletManager中即時處理
+        const overlaps = this.collisionManager.checkTargetOverlap(this.targetManager);
+        
+        // 處理重疊（重新定位）
+        overlaps.forEach(overlap => {
+            const newPosition = this.targetManager.getRandomPositionAwayFromTargets();
+            overlap.target2.setPosition(...newPosition);
+        });
+        
+        this.collisionManager.clearFrame();
     }
     
     // 更新陰影投射物件列表
@@ -447,29 +508,65 @@ class TankBattleGame {
             this.shadowRenderer.addShadowCaster(this.tank);
         }
         
-        // 添加活躍的目標
-        this.targetManager.getTargets().forEach(target => {
-            if (target.isActive()) {
-                this.shadowRenderer.addShadowCaster(target);
-            }
-        });
+        // 添加鏡面球
+        if (this.mirrorBall && this.mirrorBall.active) {
+            this.shadowRenderer.addShadowCaster(this.mirrorBall);
+        }
+        
+        // 添加活躍的目標 - 修正方法呼叫
+        if (this.targetManager && this.targetManager.getTargets) {
+            this.targetManager.getTargets().forEach(target => {
+                if (target.isActive()) {
+                    this.shadowRenderer.addShadowCaster(target);
+                }
+            });
+        }
         
         // 添加活躍的砲彈
-        this.bulletManager.getBullets().forEach(bullet => {
-            if (bullet.isActive()) {
-                this.shadowRenderer.addShadowCaster(bullet);
-            }
-        });
+        if (this.bulletManager && this.bulletManager.getBullets) {
+            this.bulletManager.getBullets().forEach(bullet => {
+                if (bullet.isActive()) {
+                    this.shadowRenderer.addShadowCaster(bullet);
+                }
+            });
+        }
     }
     
-    // 檢查碰撞
+    // 檢查碰撞 - 增強版本
     checkCollisions() {
-        // 砲彈與目標的碰撞
-        const hits = this.targetManager.checkCollisions(this.bulletManager.getBullets());
+        if (!this.collisionManager || !this.bulletManager || !this.targetManager) return;
         
-        hits.forEach(hit => {
-            this.gameManager.onTargetHit(hit);
+        // 1. 砲彈-目標碰撞檢測
+        const hits = this.collisionManager.checkBulletTargetCollisions(this.bulletManager, this.targetManager);
+        
+        // 2. Target間重疊檢測
+        const overlaps = this.collisionManager.checkTargetOverlap(this.targetManager);
+        
+        // 處理重疊（重新定位）
+        overlaps.forEach(overlap => {
+            // 重新定位其中一個target
+            const newPosition = this.targetManager.getRandomPositionAwayFromTargets();
+            overlap.target2.setPosition(...newPosition);
         });
+        
+        // 處理命中
+        if (hits.length > 0) {
+            hits.forEach(hit => {
+                if (this.ui) {
+                    this.ui.showTargetHitMessage(hit.targetType);
+                }
+                
+                if (this.gameManager && this.gameManager.onTargetHit) {
+                    this.gameManager.onTargetHit({
+                        targetType: hit.targetType,
+                        targetId: hit.targetId, // 精確ID追蹤
+                        bulletId: hit.bulletId
+                    });
+                }
+            });
+        }
+        
+        this.collisionManager.clearFrame();
     }
     
     // 渲染場景 - 確保陰影優先渲染
@@ -509,6 +606,9 @@ class TankBattleGame {
         
         // 4. 渲染砲彈 - 投射陰影到地面
         this.renderBulletsWithShadows(lightData);
+        
+        // 5. 渲染鏡面球
+        this.renderMirrorBallWithShadows(lightData);
         
         // 檢查 WebGL 錯誤
         if (window.DEBUG) {
@@ -565,6 +665,18 @@ class TankBattleGame {
         }
         
         this.targetManager.render(this.camera, lightData, this.textureManager);
+    }
+    
+    // 渲染鏡面球（加入陰影支援）
+    renderMirrorBallWithShadows(lightData) {
+        if (!this.mirrorBall || !this.mirrorBall.active) return;
+        
+        const program = this.shaderManager.useProgram('phong');
+        if (program && this.shadowRenderer) {
+            this.shadowRenderer.applyToShader(program, 1);
+        }
+        
+        this.mirrorBall.render(this.camera, lightData, this.textureManager);
     }
     
     // 遊戲循環
@@ -628,8 +740,13 @@ class TankBattleGame {
         // 清除所有砲彈
         this.bulletManager.clear();
         
-        // 重置目標
+        // 重置目標（將重新生成隨機位置）
         this.targetManager.reset();
+        
+        // 重置鏡面球（回到固定中央位置）
+        if (this.mirrorBall) {
+            this.mirrorBall.reset();
+        }
         
         // 重置攝影機
         this.camera.reset();
@@ -649,7 +766,7 @@ class TankBattleGame {
             });
         }
         
-        console.log('Game reset complete');
+        console.log('Game reset complete with new target positions and fixed MirrorBall');
     }
     
     // 處理視窗大小改變
@@ -752,6 +869,10 @@ let game = null;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, running system checks...');
     
+    // 啟用調試模式
+    window.DEBUG = true;
+    console.log('🔧 Debug mode enabled for collision detection');
+    
     // 執行系統相容性檢查
     const systemCheck = new SystemCheck();
     const report = systemCheck.checkAll();
@@ -771,7 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.resetGame = () => game.resetGame();
         window.getSystemReport = () => report;
         
-        console.log('Tank Battle Game ready!');
+        console.log('Tank Battle Game ready with coordinate debugging!');
     } else {
         console.error('System not compatible, game initialization aborted');
     }

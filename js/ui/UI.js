@@ -226,4 +226,33 @@ class UI {
         // 這裡可以添加響應式調整邏輯
         console.log('UI responding to window resize');
     }
+
+    // 顯示遊戲訊息
+    showMessage(text, type = 'info', duration = 2000) {
+        // 移除現有訊息
+        const existingMessage = document.querySelector('.game-message');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+        
+        // 創建新訊息
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `game-message message-${type}`;
+        messageDiv.textContent = text;
+        
+        // 添加到遊戲容器
+        const gameContainer = document.getElementById('gameContainer');
+        if (gameContainer) {
+            gameContainer.appendChild(messageDiv);
+            
+            // 自動移除
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, duration);
+        }
+        
+        console.log(`UI Message [${type}]: ${text}`);
+    }
 }

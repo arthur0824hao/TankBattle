@@ -354,3 +354,282 @@ class Utils {
 
 // 全域工具函式
 window.Utils = Utils;
+
+/**
+ * 座標空間轉換工具類
+ * 提供統一的世界座標提取和轉換功能
+ */
+class CoordinateUtils {
+    /**
+     * 從 4x4 變換矩陣中提取世界座標
+     * @param {Float32Array|Array} matrix - 4x4變換矩陣 (column-major)
+     * @returns {Array} [x, y, z] 世界座標
+     */
+    static extractWorldPosition(matrix) {
+        if (!matrix || matrix.length < 16) {
+            console.warn('Invalid matrix for world position extraction');
+            return [0, 0, 0];
+        }
+        
+        // 4x4矩陣的平移部分在 [12], [13], [14] (column-major)
+        return [
+            matrix[12], // X
+            matrix[13], // Y
+            matrix[14]  // Z
+        ];
+    }
+    
+    /**
+     * 從變換矩陣中提取縮放係數
+     * @param {Float32Array|Array} matrix - 4x4變換矩陣
+     * @returns {Array} [scaleX, scaleY, scaleZ] 縮放係數
+     */
+    static extractScale(matrix) {
+        if (!matrix || matrix.length < 16) {
+            return [1, 1, 1];
+        }
+        
+        // 計算每個軸的縮放
+        const scaleX = Math.sqrt(matrix[0] * matrix[0] + matrix[1] * matrix[1] + matrix[2] * matrix[2]);
+        const scaleY = Math.sqrt(matrix[4] * matrix[4] + matrix[5] * matrix[5] + matrix[6] * matrix[6]);
+        const scaleZ = Math.sqrt(matrix[8] * matrix[8] + matrix[9] * matrix[9] + matrix[10] * matrix[10]);
+        
+        return [scaleX, scaleY, scaleZ];
+    }
+    
+    /**
+     * 從變換矩陣中提取旋轉(歐拉角)
+     * @param {Float32Array|Array} matrix - 4x4變換矩陣
+     * @returns {Array} [rotX, rotY, rotZ] 旋轉角度(弧度)
+     */
+    static extractRotation(matrix) {
+        if (!matrix || matrix.length < 16) {
+            return [0, 0, 0];
+        }
+        
+        // 提取旋轉矩陣部分(去除縮放)
+        const scale = this.extractScale(matrix);
+        
+        const m11 = matrix[0] / scale[0];
+        const m12 = matrix[1] / scale[0]; 
+        const m13 = matrix[2] / scale[0];
+        const m21 = matrix[4] / scale[1];
+        const m22 = matrix[5] / scale[1];
+        const m23 = matrix[6] / scale[1];
+        const m31 = matrix[8] / scale[2];
+        const m32 = matrix[9] / scale[2];
+        const m33 = matrix[10] / scale[2];
+        
+        // 計算歐拉角
+        let rotX, rotY, rotZ;
+        
+        if (m13 < 1) {
+            if (m13 > -1) {
+                rotY = Math.asin(m13);
+                rotX = Math.atan2(-m23, m33);
+                rotZ = Math.atan2(-m12, m11);
+            } else {
+                rotY = -Math.PI / 2;
+                rotX = -Math.atan2(m21, m22);
+                rotZ = 0;
+            }
+        } else {
+            rotY = Math.PI / 2;
+            rotX = Math.atan2(m21, m22);
+            rotZ = 0;
+        }
+        
+        return [rotX, rotY, rotZ];
+    }
+    
+    /**
+     * 計算兩點間的歐幾里得距離
+     * @param {Array} pos1 - 第一個位置 [x, y, z]
+     * @param {Array} pos2 - 第二個位置 [x, y, z]
+     * @returns {number} 距離
+     */
+    static calculateDistance(pos1, pos2) {
+        const dx = pos1[0] - pos2[0];
+        const dy = pos1[1] - pos2[1];
+        const dz = pos1[2] - pos2[2];
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    
+    /**
+     * 計算兩點間的平面距離(忽略Y軸)
+     * @param {Array} pos1 - 第一個位置 [x, y, z]
+     * @param {Array} pos2 - 第二個位置 [x, y, z]
+     * @returns {number} 平面距離
+     */
+    static calculateDistance2D(pos1, pos2) {
+        const dx = pos1[0] - pos2[0];
+        const dz = pos1[2] - pos2[2];
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+    
+    /**
+     * 檢查點是否在球體範圍內
+     * @param {Array} point - 檢查的點 [x, y, z]
+     * @param {Array} sphereCenter - 球體中心 [x, y, z]
+     * @param {number} sphereRadius - 球體半徑
+     * @returns {boolean} 是否在範圍內
+     */
+    static isPointInSphere(point, sphereCenter, sphereRadius) {
+        const distance = this.calculateDistance(point, sphereCenter);
+        return distance <= sphereRadius;
+    }
+    
+    /**
+     * 檢查兩個球體是否相交
+     * @param {Array} center1 - 第一個球體中心
+     * @param {number} radius1 - 第一個球體半徑
+     * @param {Array} center2 - 第二個球體中心
+     * @param {number} radius2 - 第二個球體半徑
+     * @returns {boolean} 是否相交
+     */
+    static sphereIntersection(center1, radius1, center2, radius2) {
+        const distance = this.calculateDistance(center1, center2);
+        return distance <= (radius1 + radius2);
+    }
+    
+    /**
+     * 線性插值兩個位置
+     * @param {Array} pos1 - 起始位置 [x, y, z]
+     * @param {Array} pos2 - 結束位置 [x, y, z]
+     * @param {number} t - 插值參數 (0-1)
+     * @returns {Array} 插值結果 [x, y, z]
+     */
+    static lerpPosition(pos1, pos2, t) {
+        return [
+            pos1[0] + (pos2[0] - pos1[0]) * t,
+            pos1[1] + (pos2[1] - pos1[1]) * t,
+            pos1[2] + (pos2[2] - pos1[2]) * t
+        ];
+    }
+    
+    /**
+     * 標準化位置向量
+     * @param {Array} position - 位置向量 [x, y, z]
+     * @returns {Array} 標準化後的向量
+     */
+    static normalizePosition(position) {
+        const length = Math.sqrt(
+            position[0] * position[0] + 
+            position[1] * position[1] + 
+            position[2] * position[2]
+        );
+        
+        if (length === 0) return [0, 0, 0];
+        
+        return [
+            position[0] / length,
+            position[1] / length,
+            position[2] / length
+        ];
+    }
+    
+    /**
+     * 檢查位置是否在邊界內
+     * @param {Array} position - 檢查的位置 [x, y, z]
+     * @param {Object} bounds - 邊界 {min: [x,y,z], max: [x,y,z]}
+     * @returns {boolean} 是否在邊界內
+     */
+    static isPositionInBounds(position, bounds) {
+        return (
+            position[0] >= bounds.min[0] && position[0] <= bounds.max[0] &&
+            position[1] >= bounds.min[1] && position[1] <= bounds.max[1] &&
+            position[2] >= bounds.min[2] && position[2] <= bounds.max[2]
+        );
+    }
+    
+    /**
+     * 將位置限制在邊界內
+     * @param {Array} position - 位置 [x, y, z]
+     * @param {Object} bounds - 邊界 {min: [x,y,z], max: [x,y,z]}
+     * @returns {Array} 限制後的位置
+     */
+    static clampPositionToBounds(position, bounds) {
+        return [
+            Math.max(bounds.min[0], Math.min(bounds.max[0], position[0])),
+            Math.max(bounds.min[1], Math.min(bounds.max[1], position[1])),
+            Math.max(bounds.min[2], Math.min(bounds.max[2], position[2]))
+        ];
+    }
+}
+
+// 碰撞檢測專用工具
+class CollisionUtils {
+    /**
+     * 球體與球體碰撞檢測
+     * @param {Object} sphere1 - {position: [x,y,z], radius: number}
+     * @param {Object} sphere2 - {position: [x,y,z], radius: number}
+     * @returns {Object} {hit: boolean, distance: number, penetration: number}
+     */
+    static sphereToSphere(sphere1, sphere2) {
+        const distance = CoordinateUtils.calculateDistance(sphere1.position, sphere2.position);
+        const combinedRadius = sphere1.radius + sphere2.radius;
+        const hit = distance <= combinedRadius;
+        const penetration = hit ? combinedRadius - distance : 0;
+        
+        return {
+            hit,
+            distance,
+            penetration
+        };
+    }
+    
+    /**
+     * 射線與球體相交檢測
+     * @param {Object} ray - {origin: [x,y,z], direction: [x,y,z]}
+     * @param {Object} sphere - {position: [x,y,z], radius: number}
+     * @returns {Object} {hit: boolean, distance: number, point: [x,y,z]}
+     */
+    static rayToSphere(ray, sphere) {
+        const oc = [
+            ray.origin[0] - sphere.position[0],
+            ray.origin[1] - sphere.position[1], 
+            ray.origin[2] - sphere.position[2]
+        ];
+        
+        const a = ray.direction[0] * ray.direction[0] + 
+                  ray.direction[1] * ray.direction[1] + 
+                  ray.direction[2] * ray.direction[2];
+        
+        const b = 2.0 * (oc[0] * ray.direction[0] + 
+                         oc[1] * ray.direction[1] + 
+                         oc[2] * ray.direction[2]);
+        
+        const c = oc[0] * oc[0] + oc[1] * oc[1] + oc[2] * oc[2] - 
+                  sphere.radius * sphere.radius;
+        
+        const discriminant = b * b - 4 * a * c;
+        
+        if (discriminant < 0) {
+            return { hit: false, distance: Infinity, point: null };
+        }
+        
+        const t = (-b - Math.sqrt(discriminant)) / (2 * a);
+        
+        if (t < 0) {
+            return { hit: false, distance: Infinity, point: null };
+        }
+        
+        const hitPoint = [
+            ray.origin[0] + t * ray.direction[0],
+            ray.origin[1] + t * ray.direction[1],
+            ray.origin[2] + t * ray.direction[2]
+        ];
+        
+        return {
+            hit: true,
+            distance: t,
+            point: hitPoint
+        };
+    }
+}
+
+// 在全域範圍內註冊工具類
+if (typeof window !== 'undefined') {
+    window.CoordinateUtils = CoordinateUtils;
+    window.CollisionUtils = CollisionUtils;
+}
