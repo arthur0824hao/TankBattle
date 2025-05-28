@@ -147,10 +147,6 @@ class TankBattleGame {
         // 創建坦克
         this.tank = new Tank(this.webglCore, this.shaderManager);
         
-        // 創建鏡面球（傳入 frameBuffer）
-        this.mirror = new Mirror(this.webglCore, this.shaderManager, this.frameBuffer);
-        this.mirror.setFollowTarget(this.tank);
-        
         // 設定攝影機跟隨坦克
         this.camera.setFollowTarget(this.tank);
         
@@ -160,7 +156,7 @@ class TankBattleGame {
         // 創建目標管理器
         this.targetManager = new TargetManager(this.webglCore, this.shaderManager);
         
-        console.log('Game objects created, including Mirror sphere with dynamic reflection');
+        console.log('Game objects created');
     }
     
     // 初始化渲染系統
@@ -197,14 +193,17 @@ class TankBattleGame {
     async loadGameTextures() {
         console.log('=== LOADING TEXTURES ===');
         
-        // 定義要載入的紋理（修正路徑）
+        // 定義要載入的紋理（新增法線貼圖）
         const texturesToLoad = [
             // 坦克紋理
             { name: 'tankBase', url: 'assets/textures/tank_base.jpg', type: 'texture' },
             { name: 'tankTurret', url: 'assets/textures/tank_turret.jpg', type: 'texture' },
             { name: 'tankBarrel', url: 'assets/textures/tank_barrel.jpg', type: 'texture' },
             
-            // 環境紋理（修正路徑）
+            // 法線貼圖
+            { name: 'tankBaseNormal', url: 'assets/textures/tank_base_normal.jpg', type: 'texture' },
+            
+            // 環境紋理
             { name: 'ground', url: 'assets/textures/ground.jpg', type: 'texture' },
             { name: 'metal', url: 'assets/textures/metal.jpg', type: 'texture' },
             { name: 'target_texture', url: 'assets/textures/target_texture.jpg', type: 'texture' }
@@ -251,6 +250,7 @@ class TankBattleGame {
             console.log(`Texture loading completed: ${successful} loaded, ${failed} failed`);
             console.log('Skybox cube map loaded:', !!skyboxResult);
             console.log('Ground texture loaded:', this.textureManager.isTextureLoaded('ground'));
+            console.log('Tank base normal map loaded:', this.textureManager.isTextureLoaded('tankBaseNormal'));
             
             // 顯示所有載入的紋理
             console.log('Loaded textures:', Array.from(this.textureManager.textures.keys()));
@@ -276,6 +276,13 @@ class TankBattleGame {
         // 為坦克組件創建簡單顏色紋理
         const greenTexture = this.textureManager.createSolidColorTexture([50, 150, 50, 255], 64, 64);
         this.textureManager.textures.set('fallback_green', greenTexture);
+        
+        // 創建後備法線貼圖（平面法線貼圖：RGB(128, 128, 255) = Normal(0, 0, 1)）
+        if (!this.textureManager.isTextureLoaded('tankBaseNormal')) {
+            const normalTexture = this.textureManager.createSolidColorTexture([128, 128, 255, 255], 64, 64);
+            this.textureManager.textures.set('tankBaseNormal', normalTexture);
+            console.log('Created fallback normal map for tank base');
+        }
         
         // 創建後備天空盒（如果需要）
         if (!this.textureManager.getCubeMap('skybox')) {
@@ -405,16 +412,12 @@ class TankBattleGame {
         // 更新輸入處理 - 清除 keyJustPressed
         this.inputHandler.update();
         
-        // 更新光照系統
-        this.lighting.update(this.deltaTime);
+        // 更新光照系統（傳入坦克位置）
+        const tankPosition = this.tank ? this.tank.getPosition() : [0, 0, 0];
+        this.lighting.update(this.deltaTime, tankPosition);
         
         // 更新攝影機
         this.camera.update();
-        
-        // 更新鏡面球
-        if (this.mirror) {
-            this.mirror.update(this.deltaTime);
-        }
         
         // 更新砲彈
         this.bulletManager.update(this.deltaTime);
@@ -428,16 +431,35 @@ class TankBattleGame {
         // 更新遊戲管理器
         this.gameManager.update(this.deltaTime);
         
-        // 添加陰影投射物件（如果尚未添加）
-        if (this.shadowRenderer && this.shadowRenderer.shadowCasters.length === 0) {
+        // 更新陰影投射物件列表
+        this.updateShadowCasters();
+    }
+    
+    // 更新陰影投射物件列表
+    updateShadowCasters() {
+        if (!this.shadowRenderer) return;
+        
+        // 清空現有列表
+        this.shadowRenderer.shadowCasters.length = 0;
+        
+        // 添加坦克
+        if (this.tank) {
             this.shadowRenderer.addShadowCaster(this.tank);
-            if (this.mirror) {
-                this.shadowRenderer.addShadowCaster(this.mirror);
-            }
-            this.targetManager.getTargets().forEach(target => {
-                this.shadowRenderer.addShadowCaster(target);
-            });
         }
+        
+        // 添加活躍的目標
+        this.targetManager.getTargets().forEach(target => {
+            if (target.isActive()) {
+                this.shadowRenderer.addShadowCaster(target);
+            }
+        });
+        
+        // 添加活躍的砲彈
+        this.bulletManager.getBullets().forEach(bullet => {
+            if (bullet.isActive()) {
+                this.shadowRenderer.addShadowCaster(bullet);
+            }
+        });
     }
     
     // 檢查碰撞
@@ -450,41 +472,43 @@ class TankBattleGame {
         });
     }
     
-    // 渲染場景
+    // 渲染場景 - 確保陰影優先渲染
     render() {
+        // 第一階段：渲染陰影貼圖 (off-screen)
+        if (this.shadowRenderer && this.shadowRenderer.enabled) {
+            console.log('=== RENDERING SHADOW MAP ===');
+            this.shadowRenderer.renderShadowMap();
+        }
+        
+        // 確保回到主畫面緩衝區
+        if (this.frameBuffer) {
+            this.frameBuffer.unbind();
+        }
+        
+        // 第二階段：主畫面渲染 (on-screen)
+        console.log('=== MAIN RENDER WITH SHADOWS ===');
+        
         // 清除主畫面
         this.webglCore.clear();
         
         // 獲取光照資訊
-        const lightData = {
-            position: this.lighting.getMainLight().position,
-            color: this.lighting.getMainLight().color
-        };
+        const lightData = this.lighting;
         
-        // 獲取坦克位置
-        const tankPosition = this.tank ? this.tank.getPosition() : null;
+        // 渲染順序很重要：先地面（接收陰影），再物體（投射陰影）
         
-        // 渲染場景環境
+        // 1. 渲染場景環境 - 地面要接收陰影
         if (this.scene) {
-            this.scene.render(this.camera, this.lighting, tankPosition);
+            this.renderSceneWithShadows(lightData);
         }
         
-        // 渲染坦克
-        this.tank.render(this.camera, lightData, this.textureManager);
+        // 2. 渲染坦克 - 投射陰影到地面
+        this.renderTankWithShadows(lightData);
         
-        // 渲染鏡面球（帶動態反射）
-        if (this.mirror) {
-            this.mirror.render(this.camera, lightData, this.textureManager, (cubeCamera) => {
-                // 為 Cube Map 渲染場景（不包含鏡面球本身）
-                this.renderSceneForCubeMap(cubeCamera);
-            });
-        }
+        // 3. 渲染目標 - 投射陰影到地面
+        this.renderTargetsWithShadows(lightData);
         
-        // 渲染砲彈
-        this.bulletManager.render(this.camera, lightData, this.textureManager);
-        
-        // 渲染目標
-        this.targetManager.render(this.camera, this.lighting, this.textureManager);
+        // 4. 渲染砲彈 - 投射陰影到地面
+        this.renderBulletsWithShadows(lightData);
         
         // 檢查 WebGL 錯誤
         if (window.DEBUG) {
@@ -492,32 +516,55 @@ class TankBattleGame {
         }
     }
     
-    // 為 Cube Map 渲染場景（使用範例的方法）
-    renderSceneForCubeMap(cubeCamera, vpMatrix) {
-        // 使用傳入的 vpMatrix 而不是分別的矩陣
+    // 渲染場景（地面接收陰影）- 修正為強化陰影效果
+    renderSceneWithShadows(lightData) {
+        // 使用 phong 著色器並應用陰影
         const program = this.shaderManager.useProgram('phong');
-        if (!program) return;
-        
-        // 渲染場景環境
-        if (this.scene) {
-            const tankPosition = this.tank ? this.tank.getPosition() : null;
-            this.scene.renderForCubeMap(vpMatrix, this.lighting, tankPosition, program);
+        if (program && this.shadowRenderer) {
+            // 先應用陰影，確保陰影貼圖正確綁定
+            this.shadowRenderer.applyToShader(program, 1);
         }
         
-        // 渲染坦克
-        if (this.tank) {
-            this.tank.renderForCubeMap(vpMatrix, this.lighting, program);
+        // 渲染天空盒（不受陰影影響）
+        if (this.scene.skyboxGeometry) {
+            this.scene.renderSkybox(this.camera);
         }
         
-        // 渲染砲彈
-        if (this.bulletManager) {
-            this.bulletManager.renderForCubeMap(vpMatrix, this.lighting, program);
+        // 渲染地面（主要接收陰影的表面）
+        this.scene.renderGround(this.camera, lightData);
+        
+        console.log('Scene rendered with dramatic ground shadows');
+    }
+    
+    // 渲染坦克（加入陰影支援）
+    renderTankWithShadows(lightData) {
+        // 坦克會投射陰影，但不一定需要接收陰影
+        const program = this.shaderManager.useProgram('phong');
+        if (program && this.shadowRenderer) {
+            this.shadowRenderer.applyToShader(program, 1);
         }
         
-        // 渲染目標
-        if (this.targetManager) {
-            this.targetManager.renderForCubeMap(vpMatrix, this.lighting, program);
+        this.tank.render(this.camera, lightData, this.textureManager);
+    }
+    
+    // 渲染砲彈（加入陰影支援）
+    renderBulletsWithShadows(lightData) {
+        const program = this.shaderManager.useProgram('phong');
+        if (program && this.shadowRenderer) {
+            this.shadowRenderer.applyToShader(program, 1);
         }
+        
+        this.bulletManager.render(this.camera, lightData, this.textureManager);
+    }
+    
+    // 渲染目標（加入陰影支援）
+    renderTargetsWithShadows(lightData) {
+        const program = this.shaderManager.useProgram('phong');
+        if (program && this.shadowRenderer) {
+            this.shadowRenderer.applyToShader(program, 1);
+        }
+        
+        this.targetManager.render(this.camera, lightData, this.textureManager);
     }
     
     // 遊戲循環

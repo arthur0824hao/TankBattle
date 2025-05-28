@@ -1,25 +1,28 @@
 /**
  * 光照系統
- * 管理場景中央頂部的點光源和完整Phong光照
+ * 管理跟隨坦克上方的點光源和完整Phong光照
  */
 class Lighting {
     constructor() {
-        // 主點光源 - 位於場景中央頂部
+        // 夕陽主光源 - 側面角度照射
         this.mainLight = {
-            position: [0, 500, 0],          // 調低高度到500
-            color: [1.0, 1.0, 0.95],        // 暖白光
-            intensity: 2.0,                 // 增加強度
+            position: [100, 80, 100],        // 調整光源位置，確保能照亮物體
+            color: [1.0, 0.95, 0.8],        // 稍微調整顏色，更自然
+            intensity: 2.5,                 // 調整強度，避免過亮
             attenuation: {
                 constant: 1.0,
-                linear: 0.0005,             // 減少線性衰減
-                quadratic: 0.000001         // 減少二次衰減
-            }
+                linear: 0.002,              // 稍微增加衰減
+                quadratic: 0.000005         // 適度的二次衰減
+            },
+            followHeight: 80,               // 🎯 這裡！光源跟隨高度
+            followOffset: [100, 0, 100],    // 🎯 這裡！側面偏移(Y=0是高度)
+            smoothFollow: true
         };
         
-        // 全域環境光
+        // 環境光設定 - 確保有基本照明
         this.ambientLight = {
-            color: [0.2, 0.2, 0.25],        // 稍微增加環境光
-            intensity: 0.3                  // 增加環境光強度
+            color: [0.4, 0.35, 0.3],        // 增強環境光，確保暗面可見
+            intensity: 0.6                  // 適度的環境光強度
         };
         
         // 光照動畫（可選）
@@ -30,28 +33,77 @@ class Lighting {
             flickerFrequency: 2.0
         };
         
-        console.log('Point light initialized at scene center top:', this.mainLight.position);
+        // 跟隨參數
+        this.followTarget = null;
+        this.currentTargetPosition = [0, 0, 0];
+        this.smoothingFactor = 0.1;
+        
+        console.log('Corrected Phong lighting initialized');
     }
     
-    // 更新光照系統
-    update(deltaTime) {
+    // 更新光照系統（新增坦克位置參數）
+    update(deltaTime, tankPosition = null) {
+        // 更新光源跟隨坦克
+        if (tankPosition) {
+            this.updateLightFollow(tankPosition, deltaTime);
+        }
+        
         if (this.animation.enabled) {
             this.animation.time += deltaTime;
             this.updateLightAnimation();
         }
     }
     
+    // 更新光源跟隨坦克 - 修正為夕陽跟隨
+    updateLightFollow(tankPosition, deltaTime) {
+        // 夕陽光源目標位置：坦克側面上方
+        const targetPosition = [
+            tankPosition[0] + this.mainLight.followOffset[0],
+            tankPosition[1] + this.mainLight.followHeight+480,
+            tankPosition[2] + this.mainLight.followOffset[2]
+        ];
+        
+        if (this.mainLight.smoothFollow) {
+            // 平滑跟隨
+            this.mainLight.position[0] = this.lerp(
+                this.mainLight.position[0], 
+                targetPosition[0], 
+                this.smoothingFactor
+            );
+            this.mainLight.position[1] = this.lerp(
+                this.mainLight.position[1], 
+                targetPosition[1], 
+                this.smoothingFactor
+            );
+            this.mainLight.position[2] = this.lerp(
+                this.mainLight.position[2], 
+                targetPosition[2], 
+                this.smoothingFactor
+            );
+        } else {
+            // 直接跟隨
+            this.mainLight.position = [...targetPosition];
+        }
+        
+        console.log('Sunset light following tank at offset position:', this.mainLight.position);
+    }
+    
+    // 線性插值輔助函數
+    lerp(start, end, factor) {
+        return start + (end - start) * factor;
+    }
+    
     // 更新光照動畫效果
     updateLightAnimation() {
         // 光源強度閃爍效果
-        const baseIntensity = 1.2;
+        const baseIntensity = 3.0;
         const flicker = Math.sin(this.animation.time * this.animation.flickerFrequency) * this.animation.flickerAmplitude;
-        this.mainLight.intensity = Math.max(0.3, baseIntensity + flicker);
+        this.mainLight.intensity = Math.max(0.5, baseIntensity + flicker);
         
         // 可選：輕微的位置搖擺
-        const basePosY = 500; // 改為500
-        const sway = Math.sin(this.animation.time * 0.5) * 5;
-        this.mainLight.position[1] = basePosY + sway;
+        const currentHeight = this.mainLight.followHeight;
+        const sway = Math.sin(this.animation.time * 0.5) * 3;
+        this.mainLight.followHeight = currentHeight + sway;
     }
     
     // 應用光照參數到著色器
@@ -118,13 +170,19 @@ class Lighting {
         };
     }
     
+    // 設定平滑跟隨
+    setSmoothFollow(enabled, factor = 0.1) {
+        this.mainLight.smoothFollow = enabled;
+        this.smoothingFactor = Math.max(0.01, Math.min(1.0, factor));
+    }
+    
     // 啟用/禁用光照動畫
     setAnimationEnabled(enabled) {
         this.animation.enabled = enabled;
         if (!enabled) {
             // 重置到預設值
-            this.mainLight.intensity = 1.2;
-            this.mainLight.position[1] = 500; // 改為500
+            this.mainLight.intensity = 3.0;
+            this.mainLight.followHeight = 50;
         }
     }
     
@@ -140,7 +198,8 @@ class Lighting {
             position: [...this.mainLight.position],
             color: [...this.mainLight.color],
             intensity: this.mainLight.intensity,
-            attenuation: { ...this.mainLight.attenuation }
+            attenuation: { ...this.mainLight.attenuation },
+            followHeight: this.mainLight.followHeight
         };
     }
     
@@ -187,19 +246,21 @@ class Lighting {
     // 重置光照到預設值
     reset() {
         this.mainLight = {
-            position: [0, 500, 0], // 改為500
+            position: [0, 50, 0],
             color: [1.0, 1.0, 0.95],
-            intensity: 2.0,
+            intensity: 3.0,
             attenuation: {
                 constant: 1.0,
-                linear: 0.0005,
-                quadratic: 0.000001
-            }
+                linear: 0.001,
+                quadratic: 0.000005
+            },
+            followHeight: 50,
+            smoothFollow: true
         };
         
         this.ambientLight = {
-            color: [0.2, 0.2, 0.25],
-            intensity: 0.3
+            color: [0.15, 0.15, 0.2],
+            intensity: 0.25
         };
         
         this.animation = {
@@ -209,7 +270,7 @@ class Lighting {
             flickerFrequency: 2.0
         };
         
-        console.log('Lighting system reset to defaults');
+        console.log('Lighting system reset to follow tank defaults');
     }
     
     // 獲取光照除錯資訊
@@ -219,7 +280,8 @@ class Lighting {
             ambientLight: this.getAmbientLight(),
             animation: { ...this.animation },
             intensityAtOrigin: this.calculateIntensityAtPosition([0, 0, 0]),
-            intensityAtTank: this.calculateIntensityAtPosition([0, 2, 0])
+            intensityAtTank: this.calculateIntensityAtPosition([0, 2, 0]),
+            followMode: 'tank-above'
         };
     }
     
@@ -228,7 +290,7 @@ class Lighting {
         // 這裡可以渲染一個小球體來視覺化光源位置
         // 目前只輸出到控制台
         if (window.DEBUG) {
-            console.log('Light source at:', this.mainLight.position);
+            console.log('Light source following tank at:', this.mainLight.position);
         }
     }
 }

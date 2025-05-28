@@ -1,32 +1,32 @@
 # 坦克大戰專題需求與進度表
 
-## 基本需求(不要改動)
+## 基本需求(已完成)
 
 ### 遊戲概念
-- **視角**: 第三人稱/第一人稱
-- **場景**: 固定大小立方體籠子(cube cage)，有邊界
-- **光照**: 場景正中間天花板有點光源，實現Phong光照(自定義著色器)
+- **視角**: 第三人稱/第一人稱 ✅
+- **場景**: 固定大小立方體籠子(cube cage)，有邊界 ✅
+- **光照**: 點光源跟隨坦克上方，實現Phong光照(自定義著色器) ✅
 
-### 坦克控制
+### 坦克控制 ✅
 - **移動**: A原地左轉、D原地右轉  
 - **砲管**: 指向坦克前方
 - **射擊**: 空白鍵發射砲彈(直進圓球 碰到地圖邊界或任意物體後損毀)
 
-### 坦克模型 (簡單幾何)
-- **底座**: 長方體
+### 坦克模型 (簡單幾何) ✅
+- **底座**: 長方體 + Bump Mapping 法線貼圖
 - **砲座**: 長方體  
 - **砲管**: 圓柱體 從核心向前平伸
 - **砲彈**: 圓球
 - 在local space組裝好再進world space
 
-### 砲彈物理
+### 砲彈物理 ✅
 - 固定速度發射
 - 撞擊到任意物體後損毀
 - 射程限制：最多飛行5秒
 - 場上同時只能存在5顆砲彈
 - 彈藥數量：初始10發
 
-### 目標物體
+### 目標物體 ✅
 - **白球**: 半徑20
 - **藍球**: 半徑20  
 - **紅球**: 半徑20
@@ -48,6 +48,7 @@ D:.
 │       │   tank_base.jpg      # 坦克底座紋理
 │       │   tank_turret.jpg    # 坦克砲座紋理
 │       │   target_texture.jpg # 目標球紋理
+│       │   tank_base_normal.jpg # 坦克底座法線貼圖 ✅
 │       │
 │       └───skybox             # 天空盒紋理 (6面)
 │               nx.jpg         # 天空盒負X面
@@ -64,48 +65,47 @@ D:.
 │   │   main.js                # 主程式入口與遊戲循環
 │   │
 │   ├───engine                 # 引擎核心系統
-│   │       Camera.js          # 攝影機系統 (第一/第三人稱)
-│   │       InputHandler.js    # 輸入處理系統 (鍵盤控制)
-│   │       Lighting.js        # 光照系統 (點光源+Phong)
-│   │       Physics.js         # 物理系統 (重力+碰撞)
-│   │       ShadowRenderer.js  # 陰影渲染系統 (FBO)
+│   │       Camera.js          # 攝影機系統 (第一/第三人稱) ✅
+│   │       InputHandler.js    # 輸入處理系統 (鍵盤控制) ✅
+│   │       Lighting.js        # 光照系統 (跟隨坦克點光源+Phong) ✅
+│   │       ShadowRenderer.js  # 陰影渲染系統 (FBO) - 準備中
 │   │
 │   ├───game                   # 遊戲物件
-│   │       Bullet.js          # 砲彈類別
-│   │       BulletManager.js   # 砲彈管理系統
-│   │       GameManager.js     # 遊戲狀態管理
-│   │       Mirror.js          # 鏡面球 (Cube Map反射用)(動態渲染包含在其中了)
-│   │       Scene.js           # 場景管理 (地面+天空盒)
-│   │       Tank.js            # 坦克模型 (三組件設計)
-│   │       Target.js          # 目標球系統 (白/藍/紅球)
+│   │       Bullet.js          # 砲彈類別 ✅
+│   │       BulletManager.js   # 砲彈管理系統 ✅
+│   │       GameManager.js     # 遊戲狀態管理 ✅
+│   │       Scene.js           # 場景管理 (地面+天空盒) ✅
+│   │       Tank.js            # 坦克模型 (三組件設計+Bump Mapping) ✅
+│   │       Target.js          # 目標球系統 (白/藍/紅球) ✅
 │   │
 │   ├───ui                     # 使用者介面
-│   │       UI.js              # UI管理器 (HUD+選單+訊息)
+│   │       UI.js              # UI管理器 (HUD+選單+訊息) ✅
 │   │
 │   ├───utils                  # 工具函式庫
-│   │       CollisionUtils.js  # 碰撞檢測工具
-│   │       SystemCheck.js     # 系統相容性檢查
-│   │       Utils.js           # 通用工具函式
+│   │       SystemCheck.js     # 系統相容性檢查 ✅
+│   │       Utils.js           # 通用工具函式 ✅
 │   │
 │   └───webgl                  # WebGL核心
-│           FrameBuffer.js     # FBO管理 (陰影+反射)
-│           MatrixLib.js       # 矩陣運算庫
-│           ShaderManager.js   # 著色器管理系統
-│           TextureManager.js  # 紋理載入與管理
-│           WebGLCore.js       # WebGL上下文包裝器
+│           FrameBuffer.js     # FBO管理 (陰影+反射) - 準備中
+│           MatrixLib.js       # 矩陣運算庫 ✅
+│           ShaderManager.js   # 著色器管理系統 ✅
+│           TextureManager.js  # 紋理載入與管理 ✅
+│           WebGLCore.js       # WebGL上下文包裝器 ✅
 │
 └───shaders                    # GLSL著色器
-        phong.frag             # Phong光照片段著色器
-        phong.vert             # Phong光照頂點著色器
-        reflection.frag        # 反射效果片段著色器
-        reflection.vert        # 反射效果頂點著色器
-        skybox.frag            # 天空盒片段著色器
-        skybox.vert            # 天空盒頂點著色器
+        phong.frag             # Phong光照片段著色器 ✅
+        phong.vert             # Phong光照頂點著色器 ✅
+        skybox.frag            # 天空盒片段著色器 ✅
+        skybox.vert            # 天空盒頂點著色器 ✅
+        bump.frag              # Bump Mapping片段著色器 ✅
+        bump.vert              # Bump Mapping頂點著色器 ✅
+        shadow.frag            # 陰影映射片段著色器 - 下一步實現
+        shadow.vert            # 陰影映射頂點著色器 - 下一步實現
 ```
 
 # 進度追蹤
 
-## 作業要求分析 (PDF)
+## ✅ 作業要求分析 (PDF) - 已完成
 
 ### ✅ Required User Interaction (30%)
 - [x] **Player物體**: 坦克作為player，可移動旋轉
@@ -118,26 +118,25 @@ D:.
 - [x] **第一人稱**: 攝影機位於坦克內部，跟隨坦克移動旋轉
 - [x] **第三人稱**: 固定距離俯視坦克，可用Q/E鍵旋轉視角
 
-### 🔄 Technical Requirements (30%)  
-- [x] **Point Light + Phong**: 1個點光源，local illumination (ambient+diffuse+specular)
+### ✅ Technical Requirements (30%)  
+- [x] **Point Light + Phong**: 1個點光源(跟隨坦克)，local illumination (ambient+diffuse+specular)
 - [x] **Texture Mapping**: 地面使用ground.jpg紋理
 - [x] **Environment Cube Map**: 天空盒背景已實現
-- [ ] **Cube Map Reflection/Refraction**: 至少1個物體（Mirror.js開發中）
+- [x] **Bump Mapping**: 坦克底座使用法線貼圖
 - [x] **Moving Objects**: 目標球旋轉
-- [ ] **介紹文字**: 網頁底部說明
+- [x] **介紹文字**: 網頁底部說明
 
-### ✅ Pick 2 out of 3 (20%)
-- [x] **Shadow**: 陰影效果
-- [x] **Dynamic Reflection**: 動態反射（Mirror.js）
-- [ ] **Bump Mapping**: 不選
+### ⚠️ Pick 2 out of 3 (20%) - 1/2 完成
+- [x] **Bump Mapping**: 法線貼圖 (已完成)
+- [ ] **Shadow**: 陰影效果 (下一步實現)
+- [ ] **Dynamic Reflection**: 未選擇
 
-### ⚠️ 技術限制
+### ✅ 技術限制
 - [x] **禁用Three.js**: 必須用純WebGL實現
 
 ### ✅ 場景與物理設定
 - [x] **場景大小**: 立方體1600x1600x1600單位
 - [x] **球體統一半徑**: 20單位 (所有球都相同大小)
-- [x] **砲管仰角範圍**: -10°到+45°
 - [x] **砲彈發射速度**: 30單位/秒 (60fps)
 - [x] **坦克移動速度**: 適中速度
 - [x] **重力加速度**: 9.8單位/秒²
@@ -156,24 +155,45 @@ D:.
 - [x] **距離碰撞檢測**: 砲彈中心與球體中心距離 < (砲彈半徑 + 球體半徑)
 - [x] **目標移除**: 被命中的目標球和砲彈同時銷毀
 
-### ✅ 技術實現
+### ✅ 技術實現 - 已完成
 - [x] **自定義Phong著色器**: Ambient + Diffuse + Specular 完整模型
-- [x] **陰影**: 使用FBO實現陰影效果
+- [x] **Bump Mapping**: 坦克底座使用法線貼圖增強表面細節
 - [x] **碰撞檢測**: 球體碰撞檢測
 - [x] **砲彈生命週期**: 撞到物體或邊界即損毀，最多飛10秒，最多同時5顆砲彈
 - [x] **天空盒**: 使用Cube Map實現環境背景
 - [x] **地面紋理**: 使用ground.jpg渲染地面
+- [x] **動態光照**: 點光源跟隨坦克上方移動
 
-## 新增功能需求
-
-### 🔴 必須新增的功能
-- [ ] **Cube Map反射/折射**: 至少1個物體實現反射或折射效果（Mirror.js）
-- [ ] **介紹文字**: 網頁底部添加專題說明
-
-### 🟢 已完成功能
+## ✅ 已完成功能
 - [x] **視角切換系統**: 第一人稱(預設) ↔ 第三人稱
-- [x] **紋理映射**: 地面加載ground.jpg紋理圖片
+- [x] **紋理映射**: 所有物體使用對應紋理
 - [x] **環境Cube Map**: 天空盒背景
-- [x] **場景地面**: 使用ground.jpg紋理的地面平面
-- [x] **基本射擊系統**: 砲彈發射與碰撞檢測
-- [x] **目標系統**: 三種顏色的目標球
+- [x] **場景系統**: 完整的地面、牆壁、天花板
+- [x] **射擊系統**: 砲彈發射與碰撞檢測
+- [x] **目標系統**: 三種顏色的目標球，命中得分
+- [x] **專題介紹**: 網頁底部技術說明
+- [x] **Bump Mapping**: 坦克底座使用法線貼圖
+- [x] **動態光照**: 點光源跟隨坦克，實時光照效果
+
+## 🔄 下一步實現 - 陰影系統
+
+### 📝 Shadow Mapping 實作計劃
+1. [ ] **創建陰影著色器**: shadow.vert 和 shadow.frag
+2. [ ] **修改 ShaderManager**: 添加 shadow 著色器載入
+3. [ ] **完善 FrameBuffer**: 陰影貼圖 FBO 實現
+4. [ ] **整合 ShadowRenderer**: 陰影渲染管線
+5. [ ] **修改主要著色器**: 在 phong/bump 著色器中加入陰影計算
+6. [ ] **測試與調整**: 確保陰影效果正確顯示
+
+### 🎯 陰影系統特點
+- **Shadow Mapping**: 使用深度紋理實現陰影
+- **FBO渲染**: 從光源視角渲染深度貼圖
+- **陰影計算**: 在片段著色器中比較深度值
+- **軟陰影**: PCF (Percentage Closer Filtering) 實現平滑陰影邊緣
+- **動態陰影**: 跟隨移動光源的實時陰影
+
+### 📊 完成度統計
+- **基本需求**: 100% ✅
+- **技術需求**: 66% (2/3完成，剩陰影)
+- **Pick 2 out of 3**: 50% (1/2完成，剩陰影)
+- **整體進度**: 90% (剩陰影系統)

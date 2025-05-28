@@ -1,6 +1,6 @@
 /**
- * 幀緩衝管理器
- * 管理 Frame Buffer Objects (FBO) 用於陰影映射和動態反射
+ * 幀緩衝區管理器
+ * 管理 FBO (Frame Buffer Objects) 用於陰影映射和反射
  */
 class FrameBuffer {
     constructor(webglCore, textureManager) {
@@ -8,443 +8,354 @@ class FrameBuffer {
         this.gl = webglCore.getContext();
         this.textureManager = textureManager;
         
-        // FBO 緩存
-        this.framebuffers = new Map();
+        // 儲存所有 FBO
+        this.frameBuffers = new Map();
+        this.currentFrameBuffer = null;
         
-        // 支援檢查
+        // 檢查 FBO 支援
         this.checkSupport();
+        
+        console.log('FrameBuffer manager initialized');
     }
     
     // 檢查 FBO 支援
     checkSupport() {
-        // 檢查深度紋理支援
-        const depthTextureExt = this.gl.getExtension('WEBGL_depth_texture');
-        if (!depthTextureExt) {
-            console.warn('WEBGL_depth_texture extension not supported - shadows may not work properly');
+        // 檢查深度紋理擴展
+        if (!this.gl.getExtension('WEBGL_depth_texture')) {
+            console.warn('WEBGL_depth_texture extension not supported, shadows may not work');
         }
         
-        // 檢查浮點紋理支援（用於HDR）
-        const floatTextureExt = this.gl.getExtension('OES_texture_float');
-        if (!floatTextureExt) {
-            console.warn('OES_texture_float extension not supported - HDR effects may be limited');
+        // 檢查浮點紋理支援
+        if (!this.gl.getExtension('OES_texture_float')) {
+            console.warn('OES_texture_float extension not supported');
         }
         
         console.log('FrameBuffer support checked');
     }
     
-    // 創建基本 FBO
-    createFrameBuffer(name, width, height, options = {}) {
-        if (this.framebuffers.has(name)) {
-            console.warn(`FrameBuffer ${name} already exists`);
-            return this.framebuffers.get(name);
-        }
-        
-        const fbo = {
-            name: name,
-            width: width,
-            height: height,
-            framebuffer: this.gl.createFramebuffer(),
-            colorTexture: null,
-            depthTexture: null,
-            depthBuffer: null,
-            options: options
-        };
-        
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, fbo.framebuffer);
-        
-        // 創建顏色紋理
-        if (options.colorTexture !== false) {
-            fbo.colorTexture = this.createColorTexture(width, height, options);
-            this.gl.framebufferTexture2D(
-                this.gl.FRAMEBUFFER,
-                this.gl.COLOR_ATTACHMENT0,
-                this.gl.TEXTURE_2D,
-                fbo.colorTexture,
-                0
-            );
-        }
-        
-        // 創建深度附件
-        if (options.depthTexture) {
-            fbo.depthTexture = this.createDepthTexture(width, height);
-            this.gl.framebufferTexture2D(
-                this.gl.FRAMEBUFFER,
-                this.gl.DEPTH_ATTACHMENT,
-                this.gl.TEXTURE_2D,
-                fbo.depthTexture,
-                0
-            );
-        } else if (options.depthBuffer !== false) {
-            fbo.depthBuffer = this.createDepthBuffer(width, height);
-            this.gl.framebufferRenderbuffer(
-                this.gl.FRAMEBUFFER,
-                this.gl.DEPTH_ATTACHMENT,
-                this.gl.RENDERBUFFER,
-                fbo.depthBuffer
-            );
-        }
-        
-        // 檢查 FBO 完整性
-        if (!this.checkFramebufferStatus()) {
-            console.error(`Failed to create framebuffer: ${name}`);
-            this.cleanup(fbo);
-            return null;
-        }
-        
-        // 恢復預設 FBO
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-        
-        this.framebuffers.set(name, fbo);
-        console.log(`FrameBuffer created: ${name} (${width}x${height})`);
-        
-        return fbo;
-    }
-    
     // 創建陰影貼圖 FBO
     createShadowMapFBO(name, size = 2048) {
-        return this.createFrameBuffer(name, size, size, {
-            colorTexture: false,
-            depthTexture: true,
-            depthBuffer: false
-        });
-    }
-    
-    // 創建反射 FBO
-    createReflectionFBO(name, width = 512, height = 512) {
-        return this.createFrameBuffer(name, width, height, {
-            colorTexture: true,
-            depthTexture: false,
-            depthBuffer: true
-        });
-    }
-    
-    // 創建 Cube Map FBO（用於環境反射）
-    createCubeMapFBO(name, size = 256) {
-        const fbo = {
-            name: name,
-            size: size,
-            framebuffer: this.gl.createFramebuffer(),
-            cubeTexture: this.createCubeTexture(size),
-            depthBuffer: this.createDepthBuffer(size, size)
-        };
+        const framebuffer = this.gl.createFramebuffer();
         
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, fbo.framebuffer);
-        
-        // 附加深度緩衝區
-        this.gl.framebufferRenderbuffer(
-            this.gl.FRAMEBUFFER,
-            this.gl.DEPTH_ATTACHMENT,
-            this.gl.RENDERBUFFER,
-            fbo.depthBuffer
-        );
-        
-        // 檢查完整性
-        if (!this.checkFramebufferStatus()) {
-            console.error(`Failed to create cube map framebuffer: ${name}`);
-            this.cleanup(fbo);
-            return null;
-        }
-        
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-        this.framebuffers.set(name, fbo);
-        
-        console.log(`Cube Map FBO created: ${name} (${size}x${size})`);
-        return fbo;
-    }
-    
-    // 創建顏色紋理
-    createColorTexture(width, height, options = {}) {
-        const texture = this.gl.createTexture();
-        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-        
-        const format = options.format || this.gl.RGBA;
-        const type = options.type || this.gl.UNSIGNED_BYTE;
-        
+        // 創建深度紋理
+        const depthTexture = this.gl.createTexture();
+        this.gl.bindTexture(this.gl.TEXTURE_2D, depthTexture);
         this.gl.texImage2D(
-            this.gl.TEXTURE_2D, 0, format, width, height, 0,
-            format, type, null
+            this.gl.TEXTURE_2D, 
+            0, 
+            this.gl.DEPTH_COMPONENT, 
+            size, 
+            size, 
+            0, 
+            this.gl.DEPTH_COMPONENT, 
+            this.gl.UNSIGNED_SHORT, 
+            null
         );
         
-        // 設定過濾參數
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, 
-                             options.minFilter || this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, 
-                             options.magFilter || this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, 
-                             options.wrapS || this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, 
-                             options.wrapT || this.gl.CLAMP_TO_EDGE);
-        
-        return texture;
-    }
-    
-    // 創建深度紋理
-    createDepthTexture(width, height) {
-        const texture = this.gl.createTexture();
-        this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-        
-        this.gl.texImage2D(
-            this.gl.TEXTURE_2D, 0, this.gl.DEPTH_COMPONENT, width, height, 0,
-            this.gl.DEPTH_COMPONENT, this.gl.UNSIGNED_SHORT, null
-        );
-        
+        // 設定深度紋理參數
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
         this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
         
-        return texture;
+        // 綁定 FBO
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer);
+        
+        // 附加深度紋理到 FBO
+        this.gl.framebufferTexture2D(
+            this.gl.FRAMEBUFFER, 
+            this.gl.DEPTH_ATTACHMENT, 
+            this.gl.TEXTURE_2D, 
+            depthTexture, 
+            0
+        );
+        
+        // 告訴 WebGL 不繪製顏色
+        this.gl.drawBuffers ? this.gl.drawBuffers([this.gl.NONE]) : null;
+        this.gl.readBuffer ? this.gl.readBuffer(this.gl.NONE) : null;
+        
+        // 檢查 FBO 完整性
+        if (this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER) !== this.gl.FRAMEBUFFER_COMPLETE) {
+            console.error('Shadow map framebuffer is not complete');
+            this.gl.deleteFramebuffer(framebuffer);
+            this.gl.deleteTexture(depthTexture);
+            return null;
+        }
+        
+        // 解綁 FBO
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+        
+        const fboData = {
+            framebuffer: framebuffer,
+            depthTexture: depthTexture,
+            width: size,
+            height: size,
+            type: 'shadow'
+        };
+        
+        this.frameBuffers.set(name, fboData);
+        
+        console.log(`Shadow map FBO '${name}' created: ${size}x${size}`);
+        return fboData;
     }
     
-    // 創建深度緩衝區
-    createDepthBuffer(width, height) {
+    // 創建顏色紋理 FBO（用於其他效果）
+    createColorFBO(name, width, height, format = this.gl.RGBA) {
+        const framebuffer = this.gl.createFramebuffer();
+        
+        // 創建顏色紋理
+        const colorTexture = this.gl.createTexture();
+        this.gl.bindTexture(this.gl.TEXTURE_2D, colorTexture);
+        this.gl.texImage2D(
+            this.gl.TEXTURE_2D, 
+            0, 
+            format, 
+            width, 
+            height, 
+            0, 
+            format, 
+            this.gl.UNSIGNED_BYTE, 
+            null
+        );
+        
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+        this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+        
+        // 創建深度緩衝區
         const depthBuffer = this.gl.createRenderbuffer();
         this.gl.bindRenderbuffer(this.gl.RENDERBUFFER, depthBuffer);
         this.gl.renderbufferStorage(this.gl.RENDERBUFFER, this.gl.DEPTH_COMPONENT16, width, height);
-        return depthBuffer;
-    }
-    
-    // 創建 Cube 紋理
-    createCubeTexture(size) {
-        const texture = this.gl.createTexture();
-        this.gl.bindTexture(this.gl.TEXTURE_CUBE_MAP, texture);
         
-        const faces = [
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_X,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
-        ];
+        // 綁定 FBO
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, framebuffer);
         
-        faces.forEach(face => {
-            this.gl.texImage2D(face, 0, this.gl.RGBA, size, size, 0,
-                              this.gl.RGBA, this.gl.UNSIGNED_BYTE, null);
-        });
+        // 附加紋理和深度緩衝區
+        this.gl.framebufferTexture2D(
+            this.gl.FRAMEBUFFER, 
+            this.gl.COLOR_ATTACHMENT0, 
+            this.gl.TEXTURE_2D, 
+            colorTexture, 
+            0
+        );
+        this.gl.framebufferRenderbuffer(
+            this.gl.FRAMEBUFFER, 
+            this.gl.DEPTH_ATTACHMENT, 
+            this.gl.RENDERBUFFER, 
+            depthBuffer
+        );
         
-        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
-        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-        this.gl.texParameteri(this.gl.TEXTURE_CUBE_MAP, this.gl.TEXTURE_WRAP_R, this.gl.CLAMP_TO_EDGE);
+        // 檢查 FBO 完整性
+        if (this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER) !== this.gl.FRAMEBUFFER_COMPLETE) {
+            console.error('Color framebuffer is not complete');
+            this.gl.deleteFramebuffer(framebuffer);
+            this.gl.deleteTexture(colorTexture);
+            this.gl.deleteRenderbuffer(depthBuffer);
+            return null;
+        }
         
-        return texture;
+        // 解綁 FBO
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
+        this.gl.bindRenderbuffer(this.gl.RENDERBUFFER, null);
+        
+        const fboData = {
+            framebuffer: framebuffer,
+            colorTexture: colorTexture,
+            depthBuffer: depthBuffer,
+            width: width,
+            height: height,
+            type: 'color'
+        };
+        
+        this.frameBuffers.set(name, fboData);
+        
+        console.log(`Color FBO '${name}' created: ${width}x${height}`);
+        return fboData;
     }
     
     // 綁定 FBO
     bind(name) {
-        const fbo = this.framebuffers.get(name);
-        if (!fbo) {
-            console.error(`FrameBuffer not found: ${name}`);
+        const fboData = this.frameBuffers.get(name);
+        if (!fboData) {
+            console.error(`FrameBuffer '${name}' not found`);
             return false;
         }
         
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, fbo.framebuffer);
-        this.gl.viewport(0, 0, fbo.width, fbo.height);
+        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, fboData.framebuffer);
+        this.gl.viewport(0, 0, fboData.width, fboData.height);
         
+        this.currentFrameBuffer = fboData;
         return true;
     }
     
-    // 綁定 Cube Map FBO 的特定面
-    bindCubeMapFace(name, face) {
-        const fbo = this.framebuffers.get(name);
-        if (!fbo || !fbo.cubeTexture) {
-            console.error(`Cube Map FBO not found: ${name}`);
-            return false;
-        }
-        
-        const faces = [
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_X,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
-            this.gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-            this.gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
-        ];
-        
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, fbo.framebuffer);
-        this.gl.framebufferTexture2D(
-            this.gl.FRAMEBUFFER,
-            this.gl.COLOR_ATTACHMENT0,
-            faces[face],
-            fbo.cubeTexture,
-            0
-        );
-        this.gl.viewport(0, 0, fbo.size, fbo.size);
-        
-        return true;
-    }
-    
-    // 解綁 FBO（恢復預設）
+    // 解綁 FBO（回到主畫面）
     unbind() {
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
         
-        // 恢復畫布視窗
+        // 恢復主畫面視窗
         const canvas = this.webglCore.getCanvas();
         this.gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        this.currentFrameBuffer = null;
     }
     
-    // 綁定紋理用於讀取
-    bindTexture(name, unit = 0, target = 'color') {
-        const fbo = this.framebuffers.get(name);
-        if (!fbo) {
-            console.error(`FrameBuffer not found: ${name}`);
+    // 獲取 FBO 資料
+    getFBO(name) {
+        return this.frameBuffers.get(name);
+    }
+    
+    // 檢查 FBO 是否存在
+    hasFBO(name) {
+        return this.frameBuffers.has(name);
+    }
+    
+    // 綁定 FBO 的紋理到指定紋理單元
+    bindFBOTexture(name, unit = 0, textureType = 'depth') {
+        const fboData = this.frameBuffers.get(name);
+        if (!fboData) {
+            console.error(`FrameBuffer '${name}' not found`);
             return false;
         }
         
         this.gl.activeTexture(this.gl.TEXTURE0 + unit);
         
-        switch (target) {
-            case 'color':
-                if (fbo.colorTexture) {
-                    this.gl.bindTexture(this.gl.TEXTURE_2D, fbo.colorTexture);
-                    return true;
-                }
-                break;
-            case 'depth':
-                if (fbo.depthTexture) {
-                    this.gl.bindTexture(this.gl.TEXTURE_2D, fbo.depthTexture);
-                    return true;
-                }
-                break;
-            case 'cube':
-                if (fbo.cubeTexture) {
-                    this.gl.bindTexture(this.gl.TEXTURE_CUBE_MAP, fbo.cubeTexture);
-                    return true;
-                }
-                break;
+        if (textureType === 'depth' && fboData.depthTexture) {
+            this.gl.bindTexture(this.gl.TEXTURE_2D, fboData.depthTexture);
+        } else if (textureType === 'color' && fboData.colorTexture) {
+            this.gl.bindTexture(this.gl.TEXTURE_2D, fboData.colorTexture);
+        } else {
+            console.error(`Texture type '${textureType}' not available for FBO '${name}'`);
+            return false;
         }
         
-        console.error(`Texture target not available: ${target} in ${name}`);
-        return false;
-    }
-    
-    // 檢查 FBO 狀態
-    checkFramebufferStatus() {
-        const status = this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER);
-        
-        switch (status) {
-            case this.gl.FRAMEBUFFER_COMPLETE:
-                return true;
-            case this.gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-                console.error('Framebuffer incomplete: Attachment');
-                break;
-            case this.gl.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-                console.error('Framebuffer incomplete: Missing attachment');
-                break;
-            case this.gl.FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
-                console.error('Framebuffer incomplete: Dimensions');
-                break;
-            case this.gl.FRAMEBUFFER_UNSUPPORTED:
-                console.error('Framebuffer incomplete: Unsupported');
-                break;
-            default:
-                console.error('Framebuffer incomplete: Unknown error');
-        }
-        
-        return false;
+        return true;
     }
     
     // 調整 FBO 大小
     resize(name, width, height) {
-        const fbo = this.framebuffers.get(name);
-        if (!fbo) {
-            console.error(`FrameBuffer not found: ${name}`);
+        const fboData = this.frameBuffers.get(name);
+        if (!fboData) {
+            console.error(`FrameBuffer '${name}' not found`);
             return false;
         }
         
-        fbo.width = width;
-        fbo.height = height;
+        // 刪除舊的 FBO
+        this.delete(name);
         
-        // 調整顏色紋理
-        if (fbo.colorTexture) {
-            this.gl.bindTexture(this.gl.TEXTURE_2D, fbo.colorTexture);
-            this.gl.texImage2D(
-                this.gl.TEXTURE_2D, 0, this.gl.RGBA, width, height, 0,
-                this.gl.RGBA, this.gl.UNSIGNED_BYTE, null
-            );
+        // 創建新的 FBO
+        if (fboData.type === 'shadow') {
+            this.createShadowMapFBO(name, Math.max(width, height));
+        } else if (fboData.type === 'color') {
+            this.createColorFBO(name, width, height);
         }
         
-        // 調整深度紋理
-        if (fbo.depthTexture) {
-            this.gl.bindTexture(this.gl.TEXTURE_2D, fbo.depthTexture);
-            this.gl.texImage2D(
-                this.gl.TEXTURE_2D, 0, this.gl.DEPTH_COMPONENT, width, height, 0,
-                this.gl.DEPTH_COMPONENT, this.gl.UNSIGNED_SHORT, null
-            );
-        }
-        
-        // 調整深度緩衝區
-        if (fbo.depthBuffer) {
-            this.gl.bindRenderbuffer(this.gl.RENDERBUFFER, fbo.depthBuffer);
-            this.gl.renderbufferStorage(this.gl.RENDERBUFFER, this.gl.DEPTH_COMPONENT16, width, height);
-        }
-        
-        console.log(`FrameBuffer resized: ${name} (${width}x${height})`);
+        console.log(`FrameBuffer '${name}' resized to ${width}x${height}`);
         return true;
-    }
-    
-    // 清除 FBO 內容
-    clear(name, clearColor = [0, 0, 0, 1], clearDepth = 1.0) {
-        if (this.bind(name)) {
-            this.gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
-            this.gl.clearDepth(clearDepth);
-            this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-            this.unbind();
-        }
-    }
-    
-    // 獲取 FBO
-    get(name) {
-        return this.framebuffers.get(name);
     }
     
     // 刪除 FBO
     delete(name) {
-        const fbo = this.framebuffers.get(name);
-        if (fbo) {
-            this.cleanup(fbo);
-            this.framebuffers.delete(name);
-            console.log(`FrameBuffer deleted: ${name}`);
-            return true;
+        const fboData = this.frameBuffers.get(name);
+        if (!fboData) {
+            return false;
         }
-        return false;
-    }
-    
-    // 清理 FBO 資源
-    cleanup(fbo) {
-        if (fbo.framebuffer) {
-            this.gl.deleteFramebuffer(fbo.framebuffer);
+        
+        // 清理 WebGL 資源
+        this.gl.deleteFramebuffer(fboData.framebuffer);
+        
+        if (fboData.depthTexture) {
+            this.gl.deleteTexture(fboData.depthTexture);
         }
-        if (fbo.colorTexture) {
-            this.gl.deleteTexture(fbo.colorTexture);
+        
+        if (fboData.colorTexture) {
+            this.gl.deleteTexture(fboData.colorTexture);
         }
-        if (fbo.depthTexture) {
-            this.gl.deleteTexture(fbo.depthTexture);
+        
+        if (fboData.depthBuffer) {
+            this.gl.deleteRenderbuffer(fboData.depthBuffer);
         }
-        if (fbo.cubeTexture) {
-            this.gl.deleteTexture(fbo.cubeTexture);
-        }
-        if (fbo.depthBuffer) {
-            this.gl.deleteRenderbuffer(fbo.depthBuffer);
-        }
+        
+        this.frameBuffers.delete(name);
+        
+        console.log(`FrameBuffer '${name}' deleted`);
+        return true;
     }
     
     // 清理所有 FBO
-    cleanupAll() {
-        this.framebuffers.forEach((fbo, name) => {
-            this.cleanup(fbo);
-        });
-        this.framebuffers.clear();
+    cleanup() {
+        for (const name of this.frameBuffers.keys()) {
+            this.delete(name);
+        }
+        
+        this.currentFrameBuffer = null;
         console.log('All FrameBuffers cleaned up');
     }
     
-    // 獲取統計資訊
+    // 獲取當前綁定的 FBO
+    getCurrentFBO() {
+        return this.currentFrameBuffer;
+    }
+    
+    // 檢查 FBO 錯誤
+    checkFramebufferError(name = 'current') {
+        const status = this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER);
+        
+        if (status !== this.gl.FRAMEBUFFER_COMPLETE) {
+            let errorMessage = `FrameBuffer '${name}' error: `;
+            
+            switch (status) {
+                case this.gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+                    errorMessage += 'INCOMPLETE_ATTACHMENT';
+                    break;
+                case this.gl.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+                    errorMessage += 'MISSING_ATTACHMENT';
+                    break;
+                case this.gl.FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
+                    errorMessage += 'INCOMPLETE_DIMENSIONS';
+                    break;
+                case this.gl.FRAMEBUFFER_UNSUPPORTED:
+                    errorMessage += 'UNSUPPORTED';
+                    break;
+                default:
+                    errorMessage += 'UNKNOWN';
+            }
+            
+            console.error(errorMessage);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // 獲取 FBO 統計資訊
     getStats() {
-        return {
-            framebuffers: this.framebuffers.size,
-            names: Array.from(this.framebuffers.keys())
+        const stats = {
+            totalFBOs: this.frameBuffers.size,
+            shadowMaps: 0,
+            colorBuffers: 0,
+            totalMemory: 0 // 估算記憶體使用量（bytes）
         };
+        
+        for (const fboData of this.frameBuffers.values()) {
+            if (fboData.type === 'shadow') {
+                stats.shadowMaps++;
+                stats.totalMemory += fboData.width * fboData.height * 2; // 深度紋理 16-bit
+            } else if (fboData.type === 'color') {
+                stats.colorBuffers++;
+                stats.totalMemory += fboData.width * fboData.height * 4; // RGBA 32-bit
+            }
+        }
+        
+        return stats;
+    }
+    
+    // 除錯：列出所有 FBO
+    listFBOs() {
+        console.log('=== FrameBuffer List ===');
+        for (const [name, fboData] of this.frameBuffers.entries()) {
+            console.log(`${name}: ${fboData.type} ${fboData.width}x${fboData.height}`);
+        }
+        console.log(`Total: ${this.frameBuffers.size} FBOs`);
     }
 }

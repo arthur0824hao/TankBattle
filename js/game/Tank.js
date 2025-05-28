@@ -16,20 +16,20 @@ class Tank {
         this.moveSpeed = 30;          // 移動速度
         this.rotateSpeed = MatrixLib.degToRad(120); // 旋轉速度
         
-        // 場景邊界
-        this.boundarySize = 800;
+        // 場景邊界 - 匹配地面大小 300x300
+        this.boundarySize = 145;  // 留一些邊距，避免坦克太靠近邊緣
         
-        // 坦克組件幾何體
+        // 坦克組件幾何體 - 移除底部正方形
         this.baseGeometry = null;     // 底座
         this.turretGeometry = null;   // 砲座
         this.barrelGeometry = null;   // 砲管
         
-        // 組件變換矩陣
+        // 組件變換矩陣 - 移除底部正方形
         this.baseMatrix = MatrixLib.identity();
         this.turretMatrix = MatrixLib.identity();
         this.barrelMatrix = MatrixLib.identity();
         
-        // 材質屬性 - 修正為適合紋理的材質
+        // 材質屬性 - 移除底部正方形材質
         this.materials = {
             base: {
                 ambient: [0.2, 0.2, 0.2],
@@ -56,7 +56,7 @@ class Tank {
         this.updateMatrices();
     }
     
-    // 創建坦克幾何體
+    // 創建坦克幾何體 - 移除底部正方形
     createGeometry() {
         this.createBaseGeometry();
         this.createTurretGeometry();
@@ -347,12 +347,18 @@ class Tank {
         }
     }
     
-    // 檢查位置是否有效
+    // 檢查位置是否有效 - 基於地面大小 300x300
     isPositionValid(x, z) {
-        return Math.abs(x) <= this.boundarySize && Math.abs(z) <= this.boundarySize;
+        // 地面大小是 300x300，所以有效範圍是 -150 到 +150
+        // 但給坦克留一些邊距，避免太靠近邊緣
+        const groundHalfSize = 150;  // 地面一半大小
+        const margin = 5;            // 邊距
+        const maxDistance = groundHalfSize - margin;
+        
+        return Math.abs(x) <= maxDistance && Math.abs(z) <= maxDistance;
     }
     
-    // 更新變換矩陣
+    // 更新變換矩陣 - 移除底部正方形
     updateMatrices() {
         // 先平移到位置，再繞Y軸旋轉
         const translation = MatrixLib.translate(this.position[0], this.position[1], this.position[2]);
@@ -361,7 +367,7 @@ class Tank {
         // 正確的變換順序：先旋轉再平移（T * R）
         const worldMatrix = MatrixLib.multiply(translation, rotation);
         
-        // 所有組件共用相同的世界變換
+        // 坦克組件共用相同的世界變換
         this.baseMatrix = worldMatrix;
         this.turretMatrix = worldMatrix;
         this.barrelMatrix = worldMatrix;
@@ -417,9 +423,11 @@ class Tank {
         return this.baseMatrix;
     }
     
-    // 渲染坦克組件（添加紋理支持）
-    renderComponent(geometry, material, matrix, camera, lighting, textureManager, textureName) {
-        const program = this.shaderManager.useProgram('phong');
+    // 渲染坦克組件（修改為支持 Bump Mapping）
+    renderComponent(geometry, material, matrix, camera, lighting, textureManager, textureName, useBumpMapping = false) {
+        // 選擇著色器：底座使用 bump mapping，其他組件使用 phong
+        const shaderName = useBumpMapping && this.shaderManager.hasProgram('bump') ? 'bump' : 'phong';
+        const program = this.shaderManager.useProgram(shaderName);
         if (!program) return;
         
         // 設定變換矩陣
@@ -445,13 +453,31 @@ class Tank {
         this.webglCore.setUniform(program, 'uSpecularColor', material.specular, 'vec3');
         this.webglCore.setUniform(program, 'uShininess', material.shininess, 'float');
         
-        // 應用紋理
+        // 應用基礎紋理
         if (textureManager && textureName) {
             textureManager.bindTexture(textureName, 0);
             this.webglCore.setUniform(program, 'uTexture', 0, 'sampler2D');
             this.webglCore.setUniform(program, 'uUseTexture', true, 'bool');
         } else {
             this.webglCore.setUniform(program, 'uUseTexture', false, 'bool');
+        }
+        
+        // Bump Mapping 特定設定
+        if (useBumpMapping && shaderName === 'bump') {
+            // 檢查是否有法線貼圖
+            const hasNormalMap = textureManager && textureManager.isTextureLoaded('tankBaseNormal');
+            
+            if (hasNormalMap) {
+                textureManager.bindTexture('tankBaseNormal', 1);
+                this.webglCore.setUniform(program, 'uNormalMap', 1, 'sampler2D');
+                this.webglCore.setUniform(program, 'uUseNormalMap', true, 'bool');
+                this.webglCore.setUniform(program, 'uBumpStrength', 2.0, 'float'); // 凹凸強度
+                console.log('Tank base using bump mapping with normal map');
+            } else {
+                this.webglCore.setUniform(program, 'uUseNormalMap', false, 'bool');
+                this.webglCore.setUniform(program, 'uBumpStrength', 1.0, 'float');
+                console.log('Tank base using bump mapping without normal map');
+            }
         }
         
         // 綁定頂點屬性
@@ -472,21 +498,21 @@ class Tank {
         }
     }
     
-    // 渲染坦克（修改為支持分別的紋理）
+    // 渲染坦克（移除底部正方形）
     render(camera, lighting, textureManager = null) {
-        // 渲染底座 - 使用 tank_base.jpg 紋理
-        this.renderComponent(this.baseGeometry, this.materials.base, this.baseMatrix, camera, lighting, textureManager, 'tankBase');
+        // 渲染底座 - 使用 Bump Mapping
+        this.renderComponent(this.baseGeometry, this.materials.base, this.baseMatrix, camera, lighting, textureManager, 'tankBase', true);
         
-        // 渲染砲座 - 使用 tank_turret.jpg 紋理  
-        this.renderComponent(this.turretGeometry, this.materials.turret, this.turretMatrix, camera, lighting, textureManager, 'tankTurret');
+        // 渲染砲座 - 使用普通 Phong 著色器
+        this.renderComponent(this.turretGeometry, this.materials.turret, this.turretMatrix, camera, lighting, textureManager, 'tankTurret', false);
         
-        // 渲染砲管 - 使用 tank_barrel.jpg 紋理
-        this.renderComponent(this.barrelGeometry, this.materials.barrel, this.barrelMatrix, camera, lighting, textureManager, 'tankBarrel');
+        // 渲染砲管 - 使用普通 Phong 著色器
+        this.renderComponent(this.barrelGeometry, this.materials.barrel, this.barrelMatrix, camera, lighting, textureManager, 'tankBarrel', false);
     }
     
-    // 渲染陰影
+    // 渲染陰影（移除底部正方形）
     renderShadow(program) {
-        // 渲染所有組件的陰影
+        // 渲染三個主要組件的陰影
         const geometries = [this.baseGeometry, this.turretGeometry, this.barrelGeometry];
         const matrices = [this.baseMatrix, this.turretMatrix, this.barrelMatrix];
         
@@ -509,13 +535,17 @@ class Tank {
         this.position = [0, 0, 0];
         this.rotation = 0;
         this.updateMatrices();
-        console.log('Tank reset to origin');
+        console.log('Tank reset to origin (ground center)');
     }
     
-    // 設定位置
+    // 設定位置（帶邊界檢查）
     setPosition(x, y, z) {
-        this.position = [x, y, z];
-        this.updateMatrices();
+        if (this.isPositionValid(x, z)) {
+            this.position = [x, y, z];
+            this.updateMatrices();
+        } else {
+            console.warn(`Position [${x}, ${z}] is outside ground boundaries`);
+        }
     }
     
     // 設定旋轉
